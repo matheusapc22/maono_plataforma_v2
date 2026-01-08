@@ -5,6 +5,7 @@
 // if translations not available for every message
 const en = {
   "modal.loadData.remote": "Load Map using URL",
+  "modal.loadData.projects": "My Projects",
   "sampleMapsTab.noData": "No data ?",
   "sampleMapsTab.trySampleData": "Try sample data",
   "sampleDataViewer.rowCount": " {rowCount} rows",
