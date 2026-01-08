@@ -245,6 +245,7 @@ const App = (props) => {
     // }
     // load sample data
     _loadSampleData();
+    dispatch(toggleModal(null));
 
     // Notifications
 

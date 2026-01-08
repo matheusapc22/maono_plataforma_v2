@@ -7,6 +7,7 @@ import { LOADING_METHODS } from "../constants/default-settings";
 
 import SampleMapGallery from "../components/load-data-modal/sample-data-viewer";
 import LoadRemoteMap from "../components/load-data-modal/load-remote-map";
+import MyProjects from "../components/load-data-modal/my-projects";
 import SampleMapsTab from "../components/load-data-modal/sample-maps-tab";
 import {
   loadRemoteMap,
@@ -29,12 +30,18 @@ const CustomLoadDataModalFactory = (...deps) => {
       elementType: SampleMapGallery,
       tabElementType: SampleMapsTab,
     },
+    projects: {
+      id: LOADING_METHODS.projects,
+      label: "modal.loadData.projects",
+      elementType: MyProjects,
+    },
   };
 
   // add more loading methods
   const loadingMethods = [
     defaultLoadingMethods.find((lm) => lm.id === "upload"),
     defaultLoadingMethods.find((lm) => lm.id === "tileset"),
+    additionalMethods.projects,
     additionalMethods.remote,
     defaultLoadingMethods.find((lm) => lm.id === "storage"),
     additionalMethods.sample,

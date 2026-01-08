@@ -34,6 +34,7 @@ export const QUERY_OPTIONS = keyMirror({
 export const LOADING_METHODS = keyMirror({
   remote: null,
   sample: null,
+  projects: null,
 });
 
 export const LOADING_SAMPLE_LIST_ERROR_MESSAGE =
