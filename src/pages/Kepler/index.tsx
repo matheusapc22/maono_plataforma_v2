@@ -138,9 +138,6 @@ const GlobalStyle = styled.div`
   }
   
   /* Ocultar rótulos de tipo de camada mostrados sob cada título de camada */
-  . tipo_de_título_da_camada {
-    exibição : nenhuma;
-  }
 `;
 
 const CONTAINER_STYLE = {
