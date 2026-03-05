@@ -98,10 +98,11 @@ const { DEFAULT_EXPORT_MAP } = uiStateUpdaters;
 const demoReducer = combineReducers({
   // mount keplerGl reducer
   keplerGl: keplerGlReducer.initialState({
-    // In order to provide single file export functionality
-    // we are going to set the mapbox access token to be used
-    // in the exported file
     uiState: {
+      readOnly: true, // 🚀 A ARMA OFICIAL: Esconde o painel esquerdo nativo com segurança
+      // In order to provide single file export functionality
+      // we are going to set the mapbox access token to be used
+      // in the exported file
       exportMap: {
         ...DEFAULT_EXPORT_MAP,
         [EXPORT_MAP_FORMATS.HTML]: {
@@ -300,6 +301,12 @@ const composedUpdaters = {
 };
 
 const composedReducer = (state, action) => {
+  // 🕵️ GRAMPO DE INTERFACE: Captura os cliques nos botões do mapa (Zoom, Legenda, 3D)
+  if (action.type && action.type.includes('TOGGLE_MAP_CONTROL')) {
+    console.log("🚨 [MAÕNO INTERCEPTOR] Ação de Controle Acionada:", action.type);
+    console.log("📦 PAYLOAD EXATO:", JSON.stringify(action.payload, null, 2));
+  }
+
   if (composedUpdaters[action.type]) {
     return composedUpdaters[action.type](state, action);
   }

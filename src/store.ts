@@ -7,41 +7,90 @@ import { createLogger } from "redux-logger";
 import thunk from "redux-thunk";
 
 import { enhanceReduxMiddleware } from "@kepler.gl/reducers";
+// 🚀 1. IMPORTAÇÃO DAS ACTIONS DO KEPLER PARA O ESPIÃO
+import { ActionTypes } from '@kepler.gl/actions';
 
 // eslint-disable-next-line no-unused-vars
 import Window from "global/window";
 
 import demoReducer from "./pages/Kepler/reducers/index";
 
+/* ------------------------------------------------------------------
+ * 🚀 2. O NOSSO REDUCER ESPIÃO (APP REDUCER)
+ * ------------------------------------------------------------------ */
+const initialAppState = {
+  isPinModeActive: false,
+  clickedCoordinate: null
+};
+
+export const appReducer = (state = initialAppState, action) => {
+  switch (action.type) {
+    // Liga/Desliga o modo de "Soltar Alfinete"
+    case 'TOGGLE_PIN_MODE':
+      return { ...state, isPinModeActive: action.payload, clickedCoordinate: null };
+      
+    // Intercepta o clique nativo do Kepler (Sem tocar no DOM!)
+    case ActionTypes.MAP_CLICK:
+    case ActionTypes.LAYER_CLICK:
+      if (state.isPinModeActive) {
+        // O Kepler envia a coordenada de forma segura no payload [lng, lat]
+        const coords = action.payload || (action.info && action.info.coordinate);
+        
+        if (coords && Array.isArray(coords) && coords.length >= 2) {
+          return { 
+            ...state, 
+            clickedCoordinate: { lng: coords[0], lat: coords[1] } 
+          };
+        }
+      }
+      return state;
+      
+    default:
+      return state;
+  }
+};
+
+/* ------------------------------------------------------------------
+ * Reducers
+ * ------------------------------------------------------------------ */
 const reducers = combineReducers({
   demo: demoReducer,
+  app: appReducer // 🚀 3. INJETAMOS O NOSSO APP REDUCER AQUI!
 });
 
+/* ------------------------------------------------------------------
+ * Middlewares (Kepler-aware)
+ * ------------------------------------------------------------------ */
 export const middlewares = enhanceReduxMiddleware([
   thunk,
-  // routerMiddleware(browserHistory),
 ]);
 
-if (process.env.NODE_ENV === "local") {
-  // Redux logger
+/* ------------------------------------------------------------------
+ * Logger (somente DEV)
+ * ------------------------------------------------------------------ */
+if (import.meta.env.DEV) {
   const logger = createLogger({
-    collapsed: () => true, // Collapse all actions for more compact log
+    collapsed: () => true,
   });
   middlewares.push(logger);
 }
 
+/* ------------------------------------------------------------------
+ * Enhancers
+ * ------------------------------------------------------------------ */
 export const enhancers = [applyMiddleware(...middlewares)];
 
 const initialState = {};
 
-// eslint-disable-next-line prefer-const
+/* ------------------------------------------------------------------
+ * Redux DevTools (SAFE ENABLE)
+ * ------------------------------------------------------------------ */
 let composeEnhancers = compose;
 
-/**
- * comment out code below to enable Redux Devtools
- */
-
-if (Window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__) {
+if (
+  import.meta.env.DEV &&
+  Window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__
+) {
   composeEnhancers = Window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__({
     actionsBlacklist: [
       "@@kepler.gl/MOUSE_MOVE",
@@ -51,6 +100,9 @@ if (Window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__) {
   });
 }
 
+/* ------------------------------------------------------------------
+ * Store
+ * ------------------------------------------------------------------ */
 export default createStore(
   reducers,
   initialState,

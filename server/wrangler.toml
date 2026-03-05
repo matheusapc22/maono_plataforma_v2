@@ -5,4 +5,4 @@ compatibility_date = "2024-11-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "maono-db"
-database_id = "CHANGE_ME"
+database_id = "7bed0b8f-4cc6-466e-90f1-8182a5892d76"

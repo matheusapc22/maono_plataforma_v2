@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router'
 import AppRoutes from './Routes'
 import './index.css'
 import store from './store'
+import "./styles/kepler-overrides.css";
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

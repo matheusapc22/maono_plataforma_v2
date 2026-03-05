@@ -56,7 +56,8 @@
     "redux-logger": "^3.0.6",
     "redux-thunk": "^1.0.0",
     "styled-components": "6.1.8",
-    "usehooks-ts": "^3.1.0"
+    "usehooks-ts": "^3.1.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",

@@ -6,10 +6,10 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import AutoSizer from "react-virtualized/dist/commonjs/AutoSizer";
 import styled, { ThemeProvider, StyleSheetManager } from "styled-components";
 import Window from "global/window";
-import { connect, useDispatch } from "react-redux";
+import { connect } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import cloneDeep from "lodash/cloneDeep";
 import isEqual from "lodash/isEqual";
-import { useSelector } from "react-redux";
 import isPropValid from "@emotion/is-prop-valid";
 import { WebMercatorViewport } from "@deck.gl/core";
 import { ScreenshotWrapper } from "@openassistant/ui";
@@ -22,11 +22,14 @@ import {
 import { panelBorderColor, theme } from "@kepler.gl/styles";
 import { getApplicationConfig } from "@kepler.gl/utils";
 import { SqlPanel } from "@kepler.gl/duckdb";
+import "./kepler-overrides.css";
 import Banner from "./components/banner";
 import Announcement, { FormLink } from "./components/announcement";
 import { replaceLoadDataModal } from "./factories/load-data-modal";
 import { replaceMapControl } from "./factories/map-control";
 import { replacePanelHeader } from "./factories/panel-header";
+import { replaceDatasetSection } from "./factories/dataset-section";
+
 import {
   CLOUD_PROVIDERS_CONFIGURATION,
   DEFAULT_FEATURE_FLAGS,
@@ -47,16 +50,17 @@ import {
   toggleMapControl,
   toggleModal,
 } from "@kepler.gl/actions";
+
+import * as KeplerActions from "@kepler.gl/actions";
+
 import { CLOUD_PROVIDERS } from "./cloud-providers";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-// Sample data
-/* eslint-disable no-unused-vars */
+
 import sampleTripData, {
   testCsvData,
   sampleTripDataConfig,
 } from "./data/sample-trip-data";
-// import sampleGeojson from './data/sample-small-geojson';
-// import sampleGeojsonPoints from './data/sample-geojson-points';
+import sampleGeojsonPoints from "./data/sample-geojson-points";
 import sampleGeojsonConfig from "./data/sample-geojson-config";
 import sampleH3Data, { config as h3MapConfig } from "./data/sample-hex-id-csv";
 import sampleS2Data, {
@@ -78,36 +82,52 @@ import {
   processGeojson,
   processRowObject,
 } from "@kepler.gl/processors";
+
 import { injectComponents } from "@kepler.gl/components";
-import { replaceDatasetSection } from "./factories/dataset-section";
 import { useParams, useSearchParams } from "react-router";
 
+/**
+ * ✅ ID ÚNICO DO KEPLER
+ */
+const KEPLER_ID = "map";
+
+/**
+ * ✅ KeplerGl INJETADO (customizado)
+ */
 const KeplerGl = injectComponents([
-  // @ts-expect-error: Unresolved
   replaceLoadDataModal(),
-  // @ts-expect-error: Unresolved
   replaceMapControl(),
-  // @ts-expect-error: Unresolved
   replacePanelHeader(),
-  // @ts-expect-error: Unresolved
   replaceDatasetSection(),
 ]);
-
-/* eslint-enable no-unused-vars */
 
 // This implements the default behavior from styled-components v5
 function shouldForwardProp(propName, target) {
   if (typeof target === "string") {
-    // For HTML elements, forward the prop if it is a valid HTML attribute
     return isPropValid(propName);
   }
-  // For other elements, forward all props
   return true;
 }
 
 const BannerHeight = 48;
 const BannerKey = `banner-${FormLink}`;
-const keplerGlGetState = (state) => state.demo.keplerGl;
+
+/**
+ * ✅ CRÍTICO:
+ * getState precisa retornar o slice keplerGl INTEIRO, não keplerGl[KEPLER_ID].
+ * O Kepler seleciona pelo id internamente.
+ *
+ * Se não existir no store ainda, retorna um objeto com o shape mínimo esperado.
+ */
+const keplerGlGetState = (state) => {
+  const keplerGlState = state?.demo?.keplerGl;
+  if (keplerGlState && typeof keplerGlState === "object") return keplerGlState;
+
+  // fallback mínimo (evita crash ao acessar visState)
+  return {
+    [KEPLER_ID]: { visState: {}, mapState: {}, uiState: {} },
+  };
+};
 
 const GlobalStyle = styled.div`
   font-family: ff-clan-web-pro, "Helvetica Neue", Helvetica, sans-serif;
@@ -118,8 +138,6 @@ const GlobalStyle = styled.div`
   *,
   *:before,
   *:after {
-    -webkit-box-sizing: border-box;
-    -moz-box-sizing: border-box;
     box-sizing: border-box;
   }
 
@@ -136,8 +154,6 @@ const GlobalStyle = styled.div`
     text-decoration: none;
     color: ${(props) => props.theme.labelColor};
   }
-  
-  /* Ocultar rótulos de tipo de camada mostrados sob cada título de camada */
 `;
 
 const CONTAINER_STYLE = {
@@ -181,7 +197,6 @@ const App = (props) => {
   const query = Object.fromEntries(searchParams.entries());
   const dispatch = useDispatch();
 
-  // TODO find another way to check for existence of duckDb plugin
   const duckDbPluginEnabled = (getApplicationConfig().plugins || []).some(
     (p) => p.name === "duckdb"
   );
@@ -189,25 +204,57 @@ const App = (props) => {
   const isSqlPanelOpen = useSelector(
     (state) =>
       duckDbPluginEnabled &&
-      state?.demo?.keplerGl?.map?.uiState.mapControls.sqlPanel?.active
+      state?.demo?.keplerGl?.[KEPLER_ID]?.uiState?.mapControls?.sqlPanel?.active
   );
 
   const isAiAssistantPanelOpen = useSelector(
     (state) =>
-      state?.demo?.keplerGl?.map?.uiState.mapControls.aiAssistant?.active
+      state?.demo?.keplerGl?.[KEPLER_ID]?.uiState?.mapControls?.aiAssistant?.active
   );
 
-  const prevQueryRef = useRef<number>(null);
+  // 1) Ler qual aba está ativa no momento
+  const activeSidePanel = useSelector(
+    (state) => state?.demo?.keplerGl?.[KEPLER_ID]?.uiState?.activeSidePanel
+  );
+
+  // 2) Corrigir se sair da whitelist
+  useEffect(() => {
+    if (!activeSidePanel) return;
+
+    const ALLOWED = new Set([
+      "layer",
+      "layers",
+      "filter",
+      "filters",
+      "dataset",
+      "datasets",
+      "interaction",
+      "interactions",
+    ]);
+
+    if (ALLOWED.has(activeSidePanel)) return;
+
+    const wrapToFn = KeplerActions.wrapTo;
+    const setActive =
+      KeplerActions.setActiveSidePanel ||
+      KeplerActions.setSidePanel ||
+      KeplerActions.toggleSidePanel;
+
+    if (typeof wrapToFn === "function" && typeof setActive === "function") {
+      try {
+        dispatch(wrapToFn(KEPLER_ID, setActive("layer")));
+      } catch {
+        dispatch(wrapToFn(KEPLER_ID, setActive("layers")));
+      }
+    }
+  }, [activeSidePanel, dispatch]);
+
+  const prevQueryRef = useRef(null);
 
   useEffect(() => {
-    // if we pass an id as part of the url
-    // we try to fetch along map configurations
     const cloudProvider = CLOUD_PROVIDERS.find((c) => c.name === provider);
     if (cloudProvider) {
-      // Prevent constant reloading after change of the location
-      if (isEqual(prevQueryRef.current, { provider, id, query })) {
-        return;
-      }
+      if (isEqual(prevQueryRef.current, { provider, id, query })) return;
 
       dispatch(
         loadCloudMap({
@@ -220,42 +267,27 @@ const App = (props) => {
       return;
     }
 
-    // Load sample using its id
-    if (id) {
-      dispatch(loadSampleConfigurations(id));
-    }
-
-    // Load map using a custom
-    if (query.mapUrl) {
-      // TODO?: validate map url
-      dispatch(loadRemoteMap({ dataUrl: query.mapUrl }));
-    }
+    if (id) dispatch(loadSampleConfigurations(id));
+    if (query.mapUrl) dispatch(loadRemoteMap({ dataUrl: query.mapUrl }));
 
     if (duckDbPluginEnabled && query.sql) {
       dispatch(toggleMapControl("sqlPanel", 0));
       dispatch(toggleModal(null));
     }
 
-    // delay zs to show the banner
-    // if (!window.localStorage.getItem(BannerKey)) {
-    //   window.setTimeout(_showBanner, 3000);
-    // }
-    // load sample data
     _loadSampleData();
     dispatch(toggleModal(null));
-
-    // Notifications
-
-    // no dependencies, as this was part of componentDidMount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /**
-   * Update map boundary when view state changes, used by ai-assistant to
-   * get data from vector tiles when map boundary changes
-   */
   const onViewStateChange = useCallback(
     (viewState) => {
+      // 🚀 TÁTICA DO MUTE: Se o nosso Voo estiver ativado, o Redux fica cego.
+      if ((window as any).__maonoIsFlying) {
+        console.log("🤫 [MUTE TACTIC] Redux ignorando ViewState para evitar o AutoSizer Crash.");
+        return;
+      }
+      
       const viewport = new WebMercatorViewport(viewState);
       const nw = viewport.unproject([0, 0]);
       const se = viewport.unproject([viewport.width, viewport.height]);
@@ -265,28 +297,18 @@ const App = (props) => {
   );
 
   const _setStartScreenCapture = useCallback(
-    (flag) => {
-      dispatch(setStartScreenCapture(flag));
-    },
+    (flag) => dispatch(setStartScreenCapture(flag)),
     [dispatch]
   );
 
   const _setScreenCaptured = useCallback(
-    (screenshot) => {
-      dispatch(setScreenCaptured(screenshot));
-    },
+    (screenshot) => dispatch(setScreenCaptured(screenshot)),
     [dispatch]
   );
 
-  /*
-  const _showBanner = useCallback(() => {
-    toggleShowBanner(true);
-  }, [toggleShowBanner]);
-  */
-
   const hideBanner = useCallback(() => {
     toggleShowBanner(false);
-  }, [toggleShowBanner]);
+  }, []);
 
   const _disableBanner = useCallback(() => {
     hideBanner();
@@ -298,10 +320,7 @@ const App = (props) => {
       addDataToMap({
         datasets: [
           {
-            info: {
-              label: "Sample Visit Data",
-              id: "sample_visit_data",
-            },
+            info: { label: "Sample Visit Data", id: "sample_visit_data" },
             data: processRowObject(sampleRowData),
           },
         ],
@@ -341,42 +360,10 @@ const App = (props) => {
                 "https://4sq-studio-public.s3.us-west-2.amazonaws.com/pmtiles-test/161727fe-7952-4e57-aa05-850b3086b0b2.pmtiles",
               tilesetMetadataUrl:
                 "https://4sq-studio-public.s3.us-west-2.amazonaws.com/pmtiles-test/161727fe-7952-4e57-aa05-850b3086b0b2.pmtiles",
-              id: "sz6uy1xtj",
-              format: "rows",
-              label: "output.pmtiles",
-              metaJson: null,
-              bounds: [-150.1122219, -51.8952777, 179.3577783, 69.6043747],
-              center: [14.0625, 50.7026397, 6],
-              maxZoom: 6,
-              minZoom: 0,
-              fields: [
-                {
-                  name: "continent",
-                  id: "continent",
-                  format: "",
-                  filterProps: {
-                    domain: [
-                      "Africa",
-                      "Asia",
-                      "Europe",
-                      "North America",
-                      "Oceania",
-                      "South America",
-                    ],
-                    value: [],
-                    type: "multiSelect",
-                    gpu: false,
-                  },
-                  type: "string",
-                  analyzerType: "STRING",
-                },
-              ],
             },
           },
         ],
-        options: {
-          autoCreateLayers: true,
-        },
+        options: { autoCreateLayers: true },
       })
     );
   }, [dispatch]);
@@ -386,32 +373,15 @@ const App = (props) => {
       addDataToMap({
         datasets: [
           {
-            info: {
-              label: "Sample Taxi Trips 1",
-              id: "test_trip_data",
-              color: [255, 0, 0],
-            },
-            data: {
-              rows: sampleTripData.rows.slice(0, 20),
-              fields: cloneDeep(sampleTripData.fields),
-            },
+            info: { label: "Sample Taxi Trips 1", id: "test_trip_data", color: [255, 0, 0] },
+            data: { rows: sampleTripData.rows.slice(0, 20), fields: cloneDeep(sampleTripData.fields) },
           },
           {
-            info: {
-              label: "Sample Taxi Trips 2",
-              id: "test_trip_data_2",
-              color: [0, 255, 0],
-            },
-            data: {
-              rows: sampleTripData.rows.slice(5, sampleTripData.rows.length),
-              fields: cloneDeep(sampleTripData.fields),
-            },
+            info: { label: "Sample Taxi Trips 2", id: "test_trip_data_2", color: [0, 255, 0] },
+            data: { rows: sampleTripData.rows.slice(5), fields: cloneDeep(sampleTripData.fields) },
           },
         ],
-        options: {
-          // centerMap: true,
-          keepExistingConfig: true,
-        },
+        options: { keepExistingConfig: true },
         config: sampleTripDataConfig,
       })
     );
@@ -421,10 +391,7 @@ const App = (props) => {
     dispatch(
       addDataToMap({
         datasets: {
-          info: {
-            label: "Sample Scenegraph Ducks",
-            id: "test_trip_data",
-          },
+          info: { label: "Sample Scenegraph Ducks", id: "test_trip_data" },
           data: processCsvData(testCsvData),
         },
         config: {
@@ -436,10 +403,7 @@ const App = (props) => {
                   type: "3D",
                   config: {
                     dataId: "test_trip_data",
-                    columns: {
-                      lat: "gps_data.lat",
-                      lng: "gps_data.lng",
-                    },
+                    columns: { lat: "gps_data.lat", lng: "gps_data.lng" },
                     isVisible: true,
                   },
                 },
@@ -452,17 +416,10 @@ const App = (props) => {
   }, [dispatch]);
 
   const _loadIconData = useCallback(() => {
-    // load icon data and config and process csv file
     dispatch(
       addDataToMap({
         datasets: [
-          {
-            info: {
-              label: "Icon Data",
-              id: "test_icon_data",
-            },
-            data: processCsvData(sampleIconCsv),
-          },
+          { info: { label: "Icon Data", id: "test_icon_data" }, data: processCsvData(sampleIconCsv) },
         ],
       })
     );
@@ -472,39 +429,23 @@ const App = (props) => {
     dispatch(
       addDataToMap({
         datasets: [
-          {
-            info: { label: "Trip animation", id: animateTripDataId },
-            data: processGeojson(sampleAnimateTrip),
-          },
+          { info: { label: "Trip animation", id: animateTripDataId }, data: processGeojson(sampleAnimateTrip) },
         ],
       })
     );
   }, [dispatch]);
 
   const _loadGeojsonData = useCallback(() => {
-    // load geojson
     const geojsonPoints = processGeojson(sampleGeojsonPoints);
-    const geojsonZip = null; // processGeojson(sampleGeojson);
     dispatch(
       addDataToMap({
         datasets: [
           geojsonPoints
-            ? {
-                info: { label: "Bart Stops Geo", id: "bart-stops-geo" },
-                data: geojsonPoints,
-              }
+            ? { info: { label: "Bart Stops Geo", id: "bart-stops-geo" }, data: geojsonPoints }
             : null,
-          geojsonZip
-            ? {
-                info: { label: "SF Zip Geo", id: "sf-zip-geo" },
-                data: geojsonZip,
-              }
-            : null,
-        ].filter((d) => d !== null),
-        options: {
-          keepExistingConfig: true,
-        },
-        config: sampleGeojsonConfig as any,
+        ].filter(Boolean),
+        options: { keepExistingConfig: true },
+        config: sampleGeojsonConfig,
       })
     );
   }, [dispatch]);
@@ -513,23 +454,11 @@ const App = (props) => {
     dispatch(
       addDataToMap({
         datasets: [
-          {
-            info: { label: "Trip animation", id: animateTripDataId },
-            data: processGeojson(sampleAnimateTrip),
-          },
-          {
-            info: {
-              label: "Sample Taxi Trips",
-              id: pointDataId,
-              color: [255, 0, 0],
-            },
-            data: pointData,
-          },
+          { info: { label: "Trip animation", id: animateTripDataId }, data: processGeojson(sampleAnimateTrip) },
+          { info: { label: "Sample Taxi Trips", id: pointDataId, color: [255, 0, 0] }, data: pointData },
         ],
         config: syncedTripConfig,
-        options: {
-          centerMap: true,
-        },
+        options: { centerMap: true },
       })
     );
   }, [dispatch]);
@@ -539,76 +468,28 @@ const App = (props) => {
       dispatch(
         replaceDataInMap({
           datasetToReplaceId: pointDataId,
-          datasetToUse: {
-            info: {
-              label: "Sample Taxi Trips Replaced",
-              id: `${pointDataId}-2`,
-            },
-            data: replacePointData,
-          },
+          datasetToUse: { info: { label: "Sample Taxi Trips Replaced", id: `${pointDataId}-2` }, data: replacePointData },
         })
       );
     }, 1000);
   }, [dispatch]);
 
-  const _replaceData = useCallback(() => {
-    // add geojson data
-    const sliceData = processGeojson({
-      type: "FeatureCollection",
-      features: sampleGeojsonPoints.features.slice(0, 5),
-    });
-    _loadGeojsonData();
-    Window.setTimeout(() => {
-      dispatch(
-        replaceDataInMap({
-          datasetToReplaceId: "bart-stops-geo",
-          datasetToUse: {
-            info: { label: "Bart Stops Geo Replaced", id: "bart-stops-geo-2" },
-            data: sliceData,
-          },
-        })
-      );
-    }, 1000);
-  }, [dispatch, _loadGeojsonData]);
-
   const _loadH3HexagonData = useCallback(() => {
-    // load h3 hexagon
     dispatch(
       addDataToMap({
-        datasets: [
-          {
-            info: {
-              label: "H3 Hexagons V2",
-              id: "h3-hex-id",
-            },
-            data: processCsvData(sampleH3Data),
-          },
-        ],
+        datasets: [{ info: { label: "H3 Hexagons V2", id: "h3-hex-id" }, data: processCsvData(sampleH3Data) }],
         config: h3MapConfig,
-        options: {
-          keepExistingConfig: true,
-        },
+        options: { keepExistingConfig: true },
       })
     );
   }, [dispatch]);
 
   const _loadS2Data = useCallback(() => {
-    // load s2
     dispatch(
       addDataToMap({
-        datasets: [
-          {
-            info: {
-              label: "S2 Data",
-              id: s2DataId,
-            },
-            data: processCsvData(sampleS2Data),
-          },
-        ],
-        config: s2MapConfig as any,
-        options: {
-          keepExistingConfig: true,
-        },
+        datasets: [{ info: { label: "S2 Data", id: s2DataId }, data: processCsvData(sampleS2Data) }],
+        config: s2MapConfig,
+        options: { keepExistingConfig: true },
       })
     );
   }, [dispatch]);
@@ -616,18 +497,8 @@ const App = (props) => {
   const _loadGpsData = useCallback(() => {
     dispatch(
       addDataToMap({
-        datasets: [
-          {
-            info: {
-              label: "Gps Data",
-              id: "gps-data",
-            },
-            data: processCsvData(sampleGpsData),
-          },
-        ],
-        options: {
-          keepExistingConfig: true,
-        },
+        datasets: [{ info: { label: "Gps Data", id: "gps-data" }, data: processCsvData(sampleGpsData) }],
+        options: { keepExistingConfig: true },
       })
     );
   }, [dispatch]);
@@ -645,7 +516,6 @@ const App = (props) => {
     // _loadVectorTileData();
     // _loadSyncedFilterWTripLayer();
     // _replaceSyncedFilterWTripLayer();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     _loadPointData,
     _loadGeojsonData,
@@ -656,7 +526,6 @@ const App = (props) => {
     _loadScenegraphLayer,
     _loadGpsData,
     _loadRowData,
-    _replaceData,
     _loadVectorTileData,
     _loadSyncedFilterWTripLayer,
     _replaceSyncedFilterWTripLayer,
@@ -665,30 +534,17 @@ const App = (props) => {
   return (
     <StyleSheetManager shouldForwardProp={shouldForwardProp}>
       <ThemeProvider theme={theme}>
-        <GlobalStyle
-        // this is to apply the same modal style as kepler.gl core
-        // because styled-components doesn't always return a node
-        // https://github.com/styled-components/styled-components/issues/617
-        // ref={node => {
-        //   node ? (this.root = node) : null;
-        // }}
-        >
+        <GlobalStyle>
           <ScreenshotWrapper
-            startScreenCapture={
-              props.demo.aiAssistant.screenshotToAsk.startScreenCapture
-            }
+            startScreenCapture={props.demo.aiAssistant.screenshotToAsk.startScreenCapture}
             setScreenCaptured={_setScreenCaptured}
             setStartScreenCapture={_setStartScreenCapture}
             className="h-screen"
           >
-            <Banner
-              show={showBanner}
-              height={BannerHeight}
-              bgColor="#2E7CF6"
-              onClose={hideBanner}
-            >
+            <Banner show={showBanner} height={BannerHeight} bgColor="#2E7CF6" onClose={hideBanner}>
               <Announcement onDisable={_disableBanner} />
             </Banner>
+
             <div style={CONTAINER_STYLE}>
               <PanelGroup direction="horizontal">
                 <Panel defaultSize={isAiAssistantPanelOpen ? 70 : 100}>
@@ -697,10 +553,8 @@ const App = (props) => {
                       <AutoSizer>
                         {({ height, width }) => (
                           <KeplerGl
-                            mapboxApiAccessToken={
-                              CLOUD_PROVIDERS_CONFIGURATION.MAPBOX_TOKEN
-                            }
-                            id="map"
+                            mapboxApiAccessToken={CLOUD_PROVIDERS_CONFIGURATION.MAPBOX_TOKEN}
+                            id={KEPLER_ID}
                             getState={keplerGlGetState}
                             width={width}
                             height={height}
@@ -710,6 +564,13 @@ const App = (props) => {
                             onLoadCloudMapSuccess={onLoadCloudMapSuccess}
                             featureFlags={DEFAULT_FEATURE_FLAGS}
                             onViewStateChange={onViewStateChange}
+                            
+                            // 🚀 FRENTE C: CAPTURANDO A REF NATIVA DO MAPBOX
+                            getMapboxRef={(mapbox: any, index: number) => {
+                              if (index === 0 && mapbox) {
+                                (window as any).__maonoMapRef = mapbox.getMap();
+                              }
+                            }}
                           />
                         )}
                       </AutoSizer>
@@ -725,6 +586,7 @@ const App = (props) => {
                     )}
                   </PanelGroup>
                 </Panel>
+
                 {isAiAssistantPanelOpen && (
                   <>
                     <StyledVerticalResizeHandle />

@@ -2,11 +2,28 @@ import { Router } from "itty-router";
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 
+// Wrappers async para evitar bloquear o runtime (substitui hashSync/compareSync)
+const bcryptHash = (password, rounds = 10) =>
+  new Promise((resolve, reject) => {
+    bcrypt.hash(password, rounds, (err, hash) => {
+      if (err) reject(err);
+      else resolve(hash);
+    });
+  });
+
+const bcryptCompare = (password, hash) =>
+  new Promise((resolve, reject) => {
+    bcrypt.compare(password, hash, (err, same) => {
+      if (err) reject(err);
+      else resolve(same);
+    });
+  });
+
 const router = Router();
 
 const jsonHeaders = (origin) => ({
   "Content-Type": "application/json",
-  "Access-Control-Allow-Origin": origin,
+  "Access-Control-Allow-Origin": origin || "*",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 });
@@ -14,7 +31,7 @@ const jsonHeaders = (origin) => ({
 const now = () => new Date().toISOString();
 const encoder = new TextEncoder();
 
-const getEnv = (env) => ({
+const getEnv = (env = {}) => ({
   jwtSecret: env.JWT_SECRET || "maono_dev_secret",
   tokenExpiresIn: env.JWT_EXPIRES_IN || "8h",
   corsOrigin: env.CORS_ORIGIN || "*",
@@ -42,7 +59,7 @@ const authMiddleware = async (request, env) => {
   try {
     const { payload } = await jwtVerify(token, encoder.encode(jwtSecret));
     return { user: { id: payload.sub, email: payload.email } };
-  } catch (error) {
+  } catch {
     return { error: "Token inválido." };
   }
 };
@@ -71,16 +88,12 @@ const filterKeplerJsonByCity = (keplerJson, city, fieldName) => {
       (field) => field?.name?.toLowerCase() === normalizedField
     );
 
-    if (fieldIndex === -1) {
-      return dataset;
-    }
+    if (fieldIndex === -1) return dataset;
 
     matched = true;
     const filteredRows = rows.filter((row) => {
       const value = row[fieldIndex];
-      if (value === undefined || value === null) {
-        return false;
-      }
+      if (value === undefined || value === null) return false;
       return String(value).toLowerCase() === normalizedCity;
     });
 
@@ -127,20 +140,18 @@ router.post("/auth/signup", async (request, env) => {
     );
   }
 
-  const existing = await env.DB.prepare(
-    "SELECT id FROM users WHERE email = ?"
-  )
+  const existing = await env.DB.prepare("SELECT id FROM users WHERE email = ?")
     .bind(email)
     .first();
 
   if (existing) {
-    return new Response(
-      JSON.stringify({ error: "Email já cadastrado." }),
-      { status: 409, headers: jsonHeaders(corsOrigin) }
-    );
+    return new Response(JSON.stringify({ error: "Email já cadastrado." }), {
+      status: 409,
+      headers: jsonHeaders(corsOrigin),
+    });
   }
 
-  const passwordHash = bcrypt.hashSync(password, 10);
+  const passwordHash = await bcryptHash(password, 10);
   const user = {
     id: crypto.randomUUID(),
     email,
@@ -179,7 +190,8 @@ router.post("/auth/login", async (request, env) => {
     .bind(email)
     .first();
 
-  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+  const ok = user ? await bcryptCompare(password, user.password_hash) : false;
+  if (!user || !ok) {
     return new Response(JSON.stringify({ error: "Credenciais inválidas." }), {
       status: 401,
       headers: jsonHeaders(corsOrigin),
@@ -243,7 +255,16 @@ router.get("/projects/:id", async (request, env) => {
     });
   }
 
-  let keplerJson = JSON.parse(project.jsonData);
+  let keplerJson;
+  try {
+    keplerJson = JSON.parse(project.jsonData);
+  } catch {
+    return new Response(JSON.stringify({ error: "JSON do projeto inválido." }), {
+      status: 500,
+      headers: jsonHeaders(corsOrigin),
+    });
+  }
+
   const url = new URL(request.url);
   const city = url.searchParams.get("city");
   const field = url.searchParams.get("field") || "cidade";
@@ -251,7 +272,7 @@ router.get("/projects/:id", async (request, env) => {
   if (city) {
     try {
       keplerJson = filterKeplerJsonByCity(keplerJson, city, field);
-    } catch (error) {
+    } catch {
       return new Response(
         JSON.stringify({ error: "Não foi possível aplicar o filtro." }),
         { status: 400, headers: jsonHeaders(corsOrigin) }
@@ -260,11 +281,7 @@ router.get("/projects/:id", async (request, env) => {
   }
 
   return new Response(
-    JSON.stringify({
-      id: project.id,
-      name: project.name,
-      keplerJson,
-    }),
+    JSON.stringify({ id: project.id, name: project.name, keplerJson }),
     { headers: jsonHeaders(corsOrigin) }
   );
 });
@@ -345,13 +362,7 @@ router.put("/projects/:id", async (request, env) => {
      SET name = ?, json_data = ?, updated_at = ?
      WHERE id = ? AND user_id = ?`
   )
-    .bind(
-      name,
-      JSON.stringify(keplerJson),
-      now(),
-      request.params.id,
-      auth.user.id
-    )
+    .bind(name, JSON.stringify(keplerJson), now(), request.params.id, auth.user.id)
     .run();
 
   if (result.changes === 0) {
@@ -377,9 +388,7 @@ router.delete("/projects/:id", async (request, env) => {
     });
   }
 
-  const result = await env.DB.prepare(
-    "DELETE FROM projects WHERE id = ? AND user_id = ?"
-  )
+  const result = await env.DB.prepare("DELETE FROM projects WHERE id = ? AND user_id = ?")
     .bind(request.params.id, auth.user.id)
     .run();
 
@@ -404,15 +413,40 @@ router.all("*", (request, env) => {
 });
 
 export default {
-  fetch(request, env) {
-    const { jwtSecret } = getEnv(env);
-    if (env.NODE_ENV === "production" && jwtSecret === "maono_dev_secret") {
+  async fetch(request, env, ctx) {
+    const { jwtSecret, corsOrigin } = getEnv(env);
+
+    // hardening simples: em produção, não permitir secret default
+    if (env?.NODE_ENV === "production" && jwtSecret === "maono_dev_secret") {
       return new Response(
         JSON.stringify({ error: "Defina JWT_SECRET antes de iniciar." }),
-        { status: 500, headers: jsonHeaders(getEnv(env).corsOrigin) }
+        { status: 500, headers: jsonHeaders(corsOrigin) }
       );
     }
 
-    return router.handle(request, env);
+    try {
+      // ✅ itty-router v5: use router.fetch (não router.handle)
+      const res = await router.fetch(request, env, ctx);
+
+      // Segurança extra: nunca deixe o fetch "sem resposta"
+      if (res instanceof Response) return res;
+
+      // fallback caso algum handler retorne algo não-Response
+      return new Response(JSON.stringify(res ?? {}), {
+        status: 200,
+        headers: jsonHeaders(corsOrigin),
+      });
+    } catch (err) {
+      console.error(err);
+      const message =
+        env?.NODE_ENV === "production"
+          ? "Erro interno."
+          : (err && err.message) || String(err);
+
+      return new Response(JSON.stringify({ error: message }), {
+        status: 500,
+        headers: jsonHeaders(corsOrigin),
+      });
+    }
   },
 };
