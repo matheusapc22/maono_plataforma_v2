@@ -1,117 +1,25 @@
-import React, {
-  useMemo,
-  useState,
-  useEffect,
-  useRef,
-  useLayoutEffect
-} from 'react';
+import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import {
-  selectLayers,
-  selectDatasets,
-  selectFilters,
-  selectVisState,
-  selectUiState,
-  selectMapState, 
-  KEPLER_ID
-} from '../pages/Kepler/keplerBridge';
-
-import {
-  layerConfigChange,
-  layerVisConfigChange,
-  removeLayer,
-  addFilter,
-  setFilter,
-  removeFilter,
-  wrapTo,
-  interactionConfigChange,
-  layerVisualChannelConfigChange,
-  toggleMapControl,
-  addLayer,
-  duplicateLayer,
-  reorderLayer,
-  fitBounds,
-  updateMap,
-  addDataToMap,
-  removeDataset
-} from '@kepler.gl/actions';
-
-import { processGeojson } from '@kepler.gl/processors'; 
-
+import { selectLayers, selectDatasets, selectFilters, selectVisState, selectMapState, KEPLER_ID } from '../pages/Kepler/keplerBridge';
+import { layerConfigChange, layerVisConfigChange, removeLayer, addFilter, setFilter, removeFilter, wrapTo, layerVisualChannelConfigChange, addLayer, duplicateLayer, reorderLayer, updateMap, layerTypeChange } from '@kepler.gl/actions';
 import * as XLSX from 'xlsx';
 import { WebMercatorViewport } from '@deck.gl/core';
 
-// --- SVGs de Interface ---
-const TableIcon = () => (
-  <svg viewBox="0 0 512 512" fill="currentColor" height="1em" width="1em"><path d="M48 64C21.5 64 0 85.5 0 112v288c0 26.5 21.5 48 48 48h416c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48H48zm48 80h112v80H96v-80zm160 0h160v80H256v-80zm-160 128h112v80H96v-80zm160 0h160v80H256v-80zM48 144h416v-32H48v32zm0 160v-64h416v64H48z" /></svg>
-);
-const CloseIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" height="1.5em" width="1.5em"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-);
-const DownloadIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" height="1.2em" width="1.2em"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-);
-const ExcelIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" height="1.2em" width="1.2em"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M8 13h2.5"></path><path d="M10.5 13v5"></path><path d="M8 18h2.5"></path></svg>
-);
-
-// --- SVGs Flutuantes ---
-const LegendMapIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-);
-const PinMarkerIcon = () => (
-  <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor" stroke="#0a0f18" strokeWidth="1"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
-);
-const TrashIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-);
-const IsochroneWavesIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
-);
-const WalkIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"></path><path d="M14.5 16.5L13 11l.5-4-3-1-3 1"></path><path d="M10 16.5l-1-4.5-2.5-1"></path><path d="M16 8.5l-2.5 1-1 4"></path></svg>
-);
-const BikeIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="5.5" cy="17.5" r="3.5"></circle><circle cx="18.5" cy="17.5" r="3.5"></circle><path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"></path><path d="M12 17.5V14l-3-3 4-3 2 3h2"></path></svg>
-);
-const CarIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="12" width="18" height="8" rx="2"></rect><path d="M3 12l2-4h14l2 4"></path><circle cx="7" cy="16" r="1"></circle><circle cx="17" cy="16" r="1"></circle></svg>
-);
-
-const LayersTabIcon = () => (
-  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
-);
-
-const FiltersTabIcon = () => (
-  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
-);
-
-const TooltipsTabIcon = () => (
-  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-);
+// --- SVGs ---
+const TableIcon = () => (<svg viewBox="0 0 512 512" fill="currentColor" height="1em" width="1em"><path d="M48 64C21.5 64 0 85.5 0 112v288c0 26.5 21.5 48 48 48h416c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48H48zm48 80h112v80H96v-80zm160 0h160v80H256v-80zm-160 128h112v80H96v-80zm160 0h160v80H256v-80zM48 144h416v-32H48v32zm0 160v-64h416v64H48z" /></svg>);
+const CloseIcon = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" height="1.5em" width="1.5em"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>);
+const DownloadIcon = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" height="1.2em" width="1.2em"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>);
+const ExcelIcon = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" height="1.2em" width="1.2em"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M8 13h2.5"></path><path d="M10.5 13v5"></path><path d="M8 18h2.5"></path></svg>);
+const LayersTabIcon = () => (<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>);
+const FiltersTabIcon = () => (<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>);
+const IconPointType = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="6" r="2.5" /><circle cx="14" cy="9" r="4" /><circle cx="8" cy="16" r="3" /><circle cx="18" cy="18" r="2" /></svg>);
+const IconClusterType = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 3C5.79 3 4 4.79 4 7c0 2.86 4 7 4 7s4-4.14 4-7c0-2.21-1.79-4-4-4zm0 5.5A1.5 1.5 0 118 5.5a1.5 1.5 0 010 3z" /><path d="M16 10c-2.21 0-4 1.79-4 4 0 2.86 4 7 4 7s4-4.14 4-7c0-2.21-1.79-4-4-4zm0 5.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" /></svg>);
+const IconHeatmapType = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M5 12C5 8 8 5 12 5C16 5 19 8 19 12C19 16 16 19 12 19C8 19 5 16 5 12Z" fill="currentColor" fillOpacity="0.2"/><path d="M8 12C8 9.5 9.5 8 12 8C14.5 8 16 9.5 16 12C16 14.5 14.5 16 12 16C9.5 16 8 14.5 8 12Z" fill="currentColor" fillOpacity="0.5"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>);
 
 // --- Utils ---
-const rgbToHex = (r: number, g: number, b: number) =>
-  '#' + [r, g, b].map((x) => {
-    const hex = Math.round(x).toString(16);
-    return hex.length === 1 ? '0' + hex : hex;
-  }).join('');
-
-const hexToRgb = (hex: string) => {
-  const match = hex.replace('#', '').match(/.{1,2}/g);
-  return match ? [parseInt(match[0], 16), parseInt(match[1], 16), parseInt(match[2], 16)] : [255, 0, 0];
-};
-
-const getPlainFields = (rawFields: any) => {
-  if (!rawFields) return [];
-  const arr = typeof rawFields.toArray === 'function' ? rawFields.toArray() : Array.isArray(rawFields) ? rawFields : [];
-  return arr.map((f: any) => {
-    if (typeof f.toJS === 'function') return f.toJS();
-    if (f.get) return { name: f.get('name'), format: f.get('format') };
-    return { name: f.name, format: f.format };
-  }).filter((f: any) => f && f.name);
-};
+const rgbToHex = (r: number, g: number, b: number) => '#' + [r, g, b].map((x) => { const hex = Math.round(x).toString(16); return hex.length === 1 ? '0' + hex : hex; }).join('');
+const hexToRgb = (hex: string) => { const match = hex.replace('#', '').match(/.{1,2}/g); return match ? [parseInt(match[0], 16), parseInt(match[1], 16), parseInt(match[2], 16)] : [255, 0, 0]; };
 
 const MAONO_PALETTES = [
   { id: 'fogo', name: 'Maõno Fogo', type: 'sequential', category: 'Maono', colors: ['#FFFFCC', '#FFF2B6', '#FFE4A1', '#FFD68C', '#FFC876', '#FFBA61', '#FFAC4C', '#FF9D36', '#FF8F21', '#FF810C', '#F87100', '#E96400', '#DA5700', '#CB4A00', '#BC3D00', '#AD3000', '#9E2300', '#8F1600', '#800900', '#710000'] },
@@ -127,14 +35,11 @@ const getSafeColors = (colorRange: any) => {
 };
 
 // --- Components ---
-
 function MaonoDropdown({ value, options, onChange, placeholder = 'Selecione...' }: any) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-
   const selected = useMemo(() => options?.find((o: any) => o.value === value)?.label || placeholder, [options, value, placeholder]);
-
   const [pos, setPos] = useState({ left: 0, top: 0, width: 0, direction: 'down', maxHeight: 256 });
   const close = () => setOpen(false);
 
@@ -142,21 +47,18 @@ function MaonoDropdown({ value, options, onChange, placeholder = 'Selecione...' 
     const el = btnRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const margin = 12;
-    const gap = 6;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const margin = 12, gap = 6;
     const availableBelow = Math.max(0, vh - r.bottom - margin);
     const availableAbove = Math.max(0, r.top - margin);
     const preferUp = availableBelow < 220 && availableAbove > availableBelow;
     const direction = preferUp ? 'up' : 'down';
     const maxHeight = Math.min(256, Math.max(140, direction === 'down' ? availableBelow : availableAbove));
-    const width = r.width;
     let left = r.left;
-    if (left + width > vw - margin) left = Math.max(margin, vw - margin - width);
+    if (left + r.width > vw - margin) left = Math.max(margin, vw - margin - r.width);
     if (left < margin) left = margin;
     const top = direction === 'down' ? r.bottom + gap : Math.max(margin, r.top - gap - maxHeight);
-    setPos({ left, top, width, direction: direction as 'up' | 'down', maxHeight });
+    setPos({ left, top, width: r.width, direction: direction as 'up' | 'down', maxHeight });
   };
 
   useLayoutEffect(() => { if (open) computePosition(); }, [open, options?.length]);
@@ -182,12 +84,7 @@ function MaonoDropdown({ value, options, onChange, placeholder = 'Selecione...' 
   return (
     <>
       <div className="relative">
-        <button 
-          ref={btnRef} 
-          type="button" 
-          onClick={() => setOpen((o) => !o)} 
-          className="w-full !bg-[#131c2a] !border-[#2a3a54] hover:!border-[#C5A059] !text-white font-medium text-xs rounded-lg p-3 flex items-center justify-between outline-none shadow-sm transition-all border"
-        >
+        <button ref={btnRef} type="button" onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }} className="w-full !bg-[#131c2a] !border-[#2a3a54] hover:!border-[#C5A059] !text-white font-medium text-xs rounded-lg p-3 flex items-center justify-between outline-none shadow-sm transition-all border">
           <span className={`truncate ${!value ? '!text-gray-400' : '!text-white'}`}>{selected}</span>
           <svg className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''} !text-white`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
         </button>
@@ -198,12 +95,7 @@ function MaonoDropdown({ value, options, onChange, placeholder = 'Selecione...' 
             <div className="!bg-[#131c2a] border border-[#2a3a54] rounded-xl shadow-2xl overflow-hidden">
               <div className="overflow-y-auto maono-scroll py-1" style={{ maxHeight: pos.maxHeight }}>
                 {options?.map((opt: any) => (
-                  <button 
-                    key={opt.value} 
-                    type="button" 
-                    onClick={() => { onChange(opt.value); close(); }} 
-                    className={`w-full text-left px-4 py-3 text-xs hover:!bg-[#1a2435] transition-colors ${opt.value === value ? 'font-bold !border-l-2 !border-[#C5A059] !text-[#C5A059] !bg-[#0a0f18]' : '!text-white'}`}
-                  >
+                  <button key={opt.value} type="button" onClick={(e) => { e.stopPropagation(); onChange(opt.value); close(); }} className={`w-full text-left px-4 py-3 text-xs hover:!bg-[#1a2435] transition-colors ${opt.value === value ? 'font-bold !border-l-2 !border-[#C5A059] !text-[#C5A059] !bg-[#0a0f18]' : '!text-white'}`}>
                     {opt.label}
                   </button>
                 ))}
@@ -266,7 +158,6 @@ function RangeFilterBlock({ filterIndex, domain, value, dataset, currentField, o
         }
       }
       if (!passesCascade) continue;
-
       const val = dataContainer ? dataContainer.valueAt(i, colIdx) : allData[i][colIdx];
       if (typeof val === 'number' && !isNaN(val)) {
         let bIdx = Math.floor((val - safeDomain[0]) / binSize);
@@ -341,7 +232,7 @@ function RangeFilterBlock({ filterIndex, domain, value, dataset, currentField, o
   );
 }
 
-// 🚀 MODAL DE EXPORTAÇÃO
+// --- Data Export Modal ---
 function DataExportModal({ dataset, filters, onClose }: { dataset: any, filters: any[], onClose: () => void }) {
   const [data, setData] = useState<any[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -457,7 +348,6 @@ function DataExportModal({ dataset, filters, onClose }: { dataset: any, filters:
       XLSX.utils.book_append_sheet(workbook, worksheet, "Dados Filtrados");
       XLSX.writeFile(workbook, `${dataset.label || 'export'}_filtrado.xlsx`);
     } catch (error) {
-      console.error("Erro ao exportar para Excel:", error);
       alert("Ocorreu um erro interno ao gerar o arquivo Excel.");
     }
   };
@@ -556,9 +446,10 @@ function DataExportModal({ dataset, filters, onClose }: { dataset: any, filters:
   );
 }
 
-export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | 'filters' | 'tooltips' }) {
+// --- MAIN FILTER PANEL COMPONENT ---
+export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | 'filters' }) {
   const dispatch = useDispatch();
-  const [currentTab, setCurrentTab] = useState<'layers' | 'filters' | 'tooltips'>(activeTab);
+  const [currentTab, setCurrentTab] = useState<'layers' | 'filters'>(activeTab);
   const [searchQueries, setSearchQueries] = useState<Record<number, string>>({});
   const [openFillPaletteId, setOpenFillPaletteId] = useState<string | null>(null);
   const [openStrokePaletteId, setOpenStrokePaletteId] = useState<string | null>(null);
@@ -576,94 +467,12 @@ export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | '
   const [isAddFilterMenuOpen, setIsAddFilterMenuOpen] = useState(false);
   const addFilterMenuRef = useRef<HTMLDivElement>(null);
   const [exportingDataset, setExportingDataset] = useState<any | null>(null);
-  const [isFlying, setIsFlying] = useState(false);
-
-  // 🚀 ESTADOS DA NOVA ARQUITETURA DE MARCADOR & ISÓCRONAS
-  const [markerState, setMarkerState] = useState<'idle' | 'placing' | 'placed'>('idle');
-  const [markerOrigin, setMarkerOrigin] = useState<{lat: number, lng: number} | null>(null);
-  const [showMarkerMenu, setShowMarkerMenu] = useState(false);
-  const [isDraggingPin, setIsDraggingPin] = useState(false);
-  
-  const [showIsoModal, setShowIsoModal] = useState(false);
-  const [isoType, setIsoType] = useState<'time' | 'distance'>('time');
-  const [isoMode, setIsoMode] = useState<string>('drive_traffic');
-  const [isoRanges, setIsoRanges] = useState<string[]>(['10', '20', '30']);
-
-  const [isLoadingIsochrone, setIsLoadingIsochrone] = useState(false);
-  const [previewDataId, setPreviewDataId] = useState<string | null>(null);
 
   const layersRaw = useSelector((state: any) => selectLayers(state, KEPLER_ID));
   const datasetsRaw = useSelector((state: any) => selectDatasets(state, KEPLER_ID));
   const filtersRaw = useSelector((state: any) => selectFilters(state, KEPLER_ID));
   const visState = useSelector((state: any) => selectVisState(state, KEPLER_ID) || {});
-  const uiState = useSelector((state: any) => selectUiState(state, KEPLER_ID) || {});
   const mapState = useSelector((state: any) => selectMapState(state, KEPLER_ID)); 
-
-  // 🚀 VARIÁVEL CORRIGIDA: Criada no escopo principal para evitar Crashes!
-  const pinDragInfo = useRef({ startX: 0, startY: 0 });
-
-  // 🚀 FEEDBACK VISUAL: Altera o cursor globalmente quando está 'placing'
-  useEffect(() => {
-    if (markerState === 'placing') {
-      const svgStr = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="#C5A059" stroke="#0a0f18" stroke-width="1.5"/><circle cx="12" cy="9" r="3" fill="#0a0f18"/></svg>`;
-      const pinCursor = `url('data:image/svg+xml;utf8,${encodeURIComponent(svgStr)}') 16 32, crosshair !important`;
-      
-      document.body.style.setProperty('cursor', pinCursor, 'important');
-      const canvases = document.querySelectorAll('.mapboxgl-canvas');
-      canvases.forEach(c => (c as HTMLElement).style.setProperty('cursor', pinCursor, 'important'));
-    } else {
-      document.body.style.removeProperty('cursor');
-      const canvases = document.querySelectorAll('.mapboxgl-canvas');
-      canvases.forEach(c => (c as HTMLElement).style.removeProperty('cursor'));
-    }
-    
-    return () => { 
-      document.body.style.removeProperty('cursor'); 
-      const canvases = document.querySelectorAll('.mapboxgl-canvas');
-      canvases.forEach(c => (c as HTMLElement).style.removeProperty('cursor'));
-    };
-  }, [markerState]);
-
-  // 🚀 CAPTURA DO CLIQUE PARA INSERIR O MARCADOR
-  const clickStart = useRef({x: 0, y: 0});
-  useEffect(() => {
-    if (markerState !== 'placing' || !mapState?.width) return;
-    
-    const onMouseDown = (e: MouseEvent) => { clickStart.current = { x: e.clientX, y: e.clientY }; };
-    const onMouseUp = (e: MouseEvent) => {
-       if (Math.abs(e.clientX - clickStart.current.x) > 4 || Math.abs(e.clientY - clickStart.current.y) > 4) return;
-       const target = e.target as Element;
-       if (!target || typeof target.closest !== 'function') return;
-       if (target.closest('aside') || target.closest('button')) return;
-
-       try {
-         const viewport = new WebMercatorViewport({
-            width: mapState.width, height: mapState.height,
-            longitude: mapState.longitude || 0, latitude: mapState.latitude || 0,
-            zoom: mapState.zoom || 0, pitch: mapState.pitch || 0, bearing: mapState.bearing || 0
-         });
-         const [lng, lat] = viewport.unproject([e.clientX, e.clientY]);
-         if (!isNaN(lng) && !isNaN(lat)) {
-             setMarkerOrigin({ lat, lng });
-             setMarkerState('placed');
-             setShowMarkerMenu(true);
-         }
-       } catch(err) { console.warn("Falha ao fixar marcador", err); }
-    };
-    
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mouseup', onMouseUp);
-    return () => {
-       window.removeEventListener('mousedown', onMouseDown);
-       window.removeEventListener('mouseup', onMouseUp);
-    };
-  }, [markerState, mapState]);
-
-  // Alterna dinamicamente os valores sugeridos dependendo se é Tempo (min) ou Distância (km)
-  useEffect(() => {
-    if (isoType === 'time') setIsoRanges(['10', '20', '30']);
-    else setIsoRanges(['1', '2', '3']);
-  }, [isoType]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -683,9 +492,6 @@ export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | '
     setCollapsedFilterGroups({});
   }, [currentTab]);
   
-  const interactionConfig = visState.interactionConfig || {};
-  const isMapLegendActive = uiState.mapControls?.mapLegend?.active || false;
-
   let layers: any[] = [];
   try { if (Array.isArray(layersRaw)) layers = layersRaw; else if (layersRaw?.toArray) layers = layersRaw.toArray(); } catch (e) {}
   let filters: any[] = [];
@@ -816,17 +622,6 @@ export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | '
   const handleFieldChange = (index: number, fieldName: string) => dispatch(wrapTo(KEPLER_ID, setFilter(index, 'name', fieldName, 0)));
   const handleFilterValueChange = (index: number, newValue: any) => dispatch(wrapTo(KEPLER_ID, setFilter(index, 'value', newValue)));
 
-  const handleToggleTooltipField = (datasetId: string, fieldName: string) => {
-    const tooltip = interactionConfig.tooltip || {};
-    const config = tooltip.config || {};
-    const fieldsToShow = config.fieldsToShow || {};
-    const currentFields = getPlainFields(fieldsToShow[datasetId]);
-    const isShown = currentFields.some((f) => f.name === fieldName);
-    const newFields = isShown ? currentFields.filter((f) => f.name !== fieldName) : [...currentFields, { name: fieldName, format: null }];
-    dispatch(wrapTo(KEPLER_ID, interactionConfigChange({ id: 'tooltip', enabled: true, config: { ...config, fieldsToShow: { ...fieldsToShow, [datasetId]: newFields } } } as any)));
-  };
-
- // CSS Refinado: Centralização matemática absoluta (mx-auto) e Brilho Intenso
   const getTabClass = (tabName: string) => {
     const isActive = currentTab === tabName;
     return `flex-1 py-4 flex items-center justify-center transition-all relative z-10 outline-none ${ 
@@ -835,161 +630,55 @@ export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | '
         : '!text-[#64748b] hover:!text-gray-400' 
     }`;
   };
- 
 
   // =========================================================================
-  // 🚀 LÓGICA REFINADA DE CÁLCULO DE ISÓCRONA (NOVO MODAL)
+  // 🚀 SENSOR DE CÂMERA INTELIGENTE (TOAST DE FILTRO ÚNICO)
   // =========================================================================
-  const handleCalculateIsochrone = async () => {
-    if (!markerOrigin) return;
-    setIsLoadingIsochrone(true);
+  const [lastFilteredDataId, setLastFilteredDataId] = useState<string | null>(null);
+  const [topCenterDismissed, setTopCenterDismissed] = useState(true);
+  const prevFiltersRef = useRef<string>('[]');
+  const [isFlying, setIsFlying] = useState(false);
 
-    if (previewDataId) {
-      dispatch(wrapTo(KEPLER_ID, removeDataset(previewDataId)));
-      setPreviewDataId(null);
-    }
+  // Monitora QUAL filtro foi o último a ser alterado
+  useEffect(() => {
+    const currentFiltersMapped = filters.map((f: any) => {
+      const id = f.id || (f.get && f.get('id'));
+      const dataId = f.dataId?.[0] || f.dataId || (f.get && (f.getIn(['dataId', 0]) || f.get('dataId')));
+      const value = Array.isArray(f.value) ? f.value : f.value?.toArray ? f.value.toArray() : f.value;
+      return { id, dataId, value };
+    });
+    const currentStr = JSON.stringify(currentFiltersMapped);
     
-    const { lat, lng } = markerOrigin;
-    const validRanges = isoRanges.filter(v => v.trim() !== '').map(Number).filter(n => !isNaN(n) && n > 0);
-    
-    if (validRanges.length === 0) {
-        alert("Insira pelo menos um intervalo válido.");
-        setIsLoadingIsochrone(false);
-        return;
-    }
-
-    try {
-      const promises = validRanges.map(val => {
-        // Conversão: Geoapify usa segundos para tempo e metros para distância.
-        let rangeVal = isoType === 'time' ? val * 60 : val * 1000;
-        
-        // Simulação Exata: "Dirigindo com Trânsito" corta 25% do alcance
-        if (isoMode === 'drive_traffic') {
-            rangeVal = rangeVal * 0.75;
-        }
-        
-        // O modo da API Geoapify ignora o nosso "_traffic" inventado
-        const apiMode = isoMode === 'drive_traffic' ? 'drive' : isoMode;
-
-        return fetch(`https://api.geoapify.com/v1/isoline?lat=${lat}&lon=${lng}&type=${isoType}&mode=${apiMode}&range=${rangeVal}&apiKey=88ca5fc7edfa494fbdce9875931e26f5`)
-          .then(res => res.json())
-          .then(data => ({ data, originalVal: val }));
-      });
-
-      const results = await Promise.all(promises);
+    if (currentStr !== prevFiltersRef.current) {
+      const prev = JSON.parse(prevFiltersRef.current);
+      const changed = currentFiltersMapped.find((c, i) => !prev[i] || JSON.stringify(c.value) !== JSON.stringify(prev[i].value));
       
-      const polygons = results.flatMap((res) => {
-         if (!res.data.features) return [];
-         return res.data.features
-           .filter((f: any) => f.geometry.type.includes('Polygon'))
-           .map((f: any) => ({
-             ...f, 
-             properties: { 
-                 ...f.properties, 
-                 range_time: `${res.originalVal} ${isoType === 'time' ? 'Min' : 'Km'}` 
-             }
-           }));
-      });
-
-      if (polygons.length === 0) {
-         console.warn("Nenhuma rota encontrada.");
-         setIsLoadingIsochrone(false);
-         return;
+      if (changed && changed.dataId && changed.value !== null && changed.value !== undefined && (!Array.isArray(changed.value) || changed.value.length !== 0)) {
+        setLastFilteredDataId(changed.dataId);
+        setTopCenterDismissed(false); 
       }
-
-      const originPoint = {
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [lng, lat] },
-        properties: { range_time: "Origem" } 
-      };
-
-      const geoJsonData = { type: "FeatureCollection", features: [...polygons, originPoint] };
-      const dataId = `isochrone_${Date.now()}`;
-      
-      const modoTextLabel = isoMode === 'drive_traffic' ? 'Com Trânsito' : isoMode === 'walk' ? 'A pé' : isoMode === 'bicycle' ? 'Bike' : 'Carro';
-
-      const isochroneConfig = {
-        version: 'v1',
-        config: {
-          visState: {
-            layers: [
-              {
-                id: `layer_${dataId}`,
-                type: 'geojson',
-                config: {
-                  dataId: dataId,
-                  label: `Análise: ${modoTextLabel}`,
-                  color: [221, 178, 124], 
-                  columns: { geojson: '_geojson' },
-                  isVisible: true,
-                  visConfig: {
-                    opacity: 0.25,
-                    filled: true,
-                    stroked: true,
-                    strokeColor: [193, 123, 62],
-                    strokeOpacity: 1,
-                    thickness: 1, 
-                    radius: 20 
-                  }
-                }
-              }
-            ]
-          }
-        }
-      };
-
-      dispatch(wrapTo(KEPLER_ID, addDataToMap({
-        datasets: { info: { label: `Análise: ${modoTextLabel}`, id: dataId }, data: processGeojson(geoJsonData) },
-        options: { centerMap: true, keepExistingConfig: true },
-        config: isochroneConfig
-      })));
-
-      setPreviewDataId(dataId);
-      setShowIsoModal(false); // Fecha o modal de configuração
-      setShowMarkerMenu(false); // Fecha o menu de contexto
-      
-    } catch (error) {
-      console.error("Erro ao gerar isócrona:", error);
-    } finally {
-      setIsLoadingIsochrone(false);
+      prevFiltersRef.current = currentStr;
     }
-  };
+  }, [filters]);
 
-  // =========================================================================
-  // 🚀 SENSOR DE CÂMERA INTELIGENTE 
-  // =========================================================================
+  // Calcula a Bounding Box APENAS daquele dataset que acabou de ser filtrado
   const [targetBounds, setTargetBounds] = useState<number[] | null>(null);
   const [centroid, setCentroid] = useState<{lat: number, lng: number} | null>(null);
-  const [showCenterButton, setShowCenterButton] = useState(false);
 
   useEffect(() => {
+    if (topCenterDismissed || !lastFilteredDataId) return;
+
     const debounceTimer = setTimeout(() => {
-      const hasActiveFilter = filters?.some((f: any) => {
-        const hasField = f.name || (f.get && f.get('name'));
-        const val = f.value || (f.get && f.get('value'));
-        const hasValue = Array.isArray(val) ? val.length > 0 : val !== null && val !== undefined && val !== '';
-        return hasField && hasValue;
-      });
-
-      if (!filters || filters.length === 0 || !hasActiveFilter) {
-        setTargetBounds(null);
-        setCentroid(null);
-        setShowCenterButton(false);
-        return;
-      }
-
       let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
       let hasValidCoords = false;
 
       const extractGeoJsonCoords = (coords: any) => {
         if (!coords) return;
         if (Array.isArray(coords) && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
-          const lng = coords[0];
-          const lat = coords[1];
-          if (lat < minLat) minLat = lat;
-          if (lat > maxLat) maxLat = lat;
-          if (lng < minLng) minLng = lng;
-          if (lng > maxLng) maxLng = lng;
+          if (coords[1] < minLat) minLat = coords[1];
+          if (coords[1] > maxLat) maxLat = coords[1];
+          if (coords[0] < minLng) minLng = coords[0];
+          if (coords[0] > maxLng) maxLng = coords[0];
           hasValidCoords = true;
         } else if (Array.isArray(coords)) {
           for (let j = 0; j < coords.length; j++) extractGeoJsonCoords(coords[j]);
@@ -998,28 +687,35 @@ export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | '
 
       try {
         orderedLayers.forEach((layer: any) => {
-          if (!layer.config?.isVisible) return;
-          const isPoint = layer.type === 'point';
-          const isGeojson = layer.type === 'geojson';
+          // 🚀 CORREÇÃO 2: Leitura blindada
+          const config = layer.config || (layer.get && layer.get('config'));
+          const layerType = layer.type || (layer.get && layer.get('type'));
+
+          if (!config?.isVisible) return;
+          const dataId = config.dataId;
+          if (dataId !== lastFilteredDataId) return;
+          
+          const isPoint = layerType === 'point' || layerType === 'cluster' || layerType === 'heatmap';
+          const isGeojson = layerType === 'geojson';
           if (!isPoint && !isGeojson) return;
-          const dataId = layer.config.dataId;
+          
           const ds = availableDatasets.find(d => d.id === dataId);
           if (!ds) return;
 
           let latIdx = -1, lngIdx = -1, geoIdx = -1;
 
           if (isPoint) {
-            const latField = layer.config.columns?.lat?.value || layer.config.columns?.lat;
-            const lngField = layer.config.columns?.lng?.value || layer.config.columns?.lng;
+            const columns = config.columns || {};
+            const latField = columns.lat?.value || columns.lat;
+            const lngField = columns.lng?.value || columns.lng;
             if (latField && lngField) {
-              latIdx = ds.fields.findIndex((f: any) => f.name === latField);
-              lngIdx = ds.fields.findIndex((f: any) => f.name === lngField);
+              latIdx = ds.fields.findIndex((f: any) => (f.name || f.get?.('name')) === latField);
+              lngIdx = ds.fields.findIndex((f: any) => (f.name || f.get?.('name')) === lngField);
             }
           } else if (isGeojson) {
-            const geoField = layer.config.columns?.geojson?.value || layer.config.columns?.geojson;
-            if (geoField) {
-              geoIdx = ds.fields.findIndex((f: any) => f.name === geoField);
-            }
+            const columns = config.columns || {};
+            const geoField = columns.geojson?.value || columns.geojson;
+            if (geoField) geoIdx = ds.fields.findIndex((f: any) => (f.name || f.get?.('name')) === geoField);
           }
 
           if (latIdx < 0 && lngIdx < 0 && geoIdx < 0) return;
@@ -1030,7 +726,6 @@ export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | '
 
           for (let i = 0; i < filteredIdx.length; i++) {
             const rowIndex = filteredIdx[i];
-            
             if (isPoint && latIdx >= 0 && lngIdx >= 0) {
               const lat = dataContainer ? dataContainer.valueAt(rowIndex, latIdx) : allData[rowIndex][latIdx];
               const lng = dataContainer ? dataContainer.valueAt(rowIndex, lngIdx) : allData[rowIndex][lngIdx];
@@ -1045,9 +740,7 @@ export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | '
               const geoData = dataContainer ? dataContainer.valueAt(rowIndex, geoIdx) : allData[rowIndex][geoIdx];
               if (geoData) {
                 let geomObj = geoData;
-                if (typeof geoData === 'string') {
-                  try { geomObj = JSON.parse(geoData); } catch (e) { continue; }
-                }
+                if (typeof geoData === 'string') try { geomObj = JSON.parse(geoData); } catch (e) { continue; }
                 if (geomObj?.geometry?.coordinates) extractGeoJsonCoords(geomObj.geometry.coordinates);
                 else if (geomObj?.coordinates) extractGeoJsonCoords(geomObj.coordinates);
                 else if (Array.isArray(geomObj)) extractGeoJsonCoords(geomObj);
@@ -1061,61 +754,59 @@ export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | '
           if (minLng === maxLng) { minLng -= 0.02; maxLng += 0.02; }
           setTargetBounds([minLng, minLat, maxLng, maxLat]);
           setCentroid({ lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2 });
-          setShowCenterButton(true); 
         } else {
           setTargetBounds(null);
           setCentroid(null);
-          setShowCenterButton(false);
         }
       } catch (err) {}
     }, 600);
     return () => clearTimeout(debounceTimer);
-  }, [filters, orderedLayers, availableDatasets]);
+  }, [lastFilteredDataId, topCenterDismissed, orderedLayers, availableDatasets]);
 
-  useEffect(() => {
-    if (!centroid || !targetBounds || !mapState || !mapState.width || !mapState.height || showCenterButton || isFlying) return;
+  const handleTopCenterFly = () => {
+    if (isFlying || !mapState?.width || !mapState?.height || !targetBounds) return;
+    setIsFlying(true); 
 
-    try {
-      const viewport = new WebMercatorViewport({
-        width: mapState.width,
-        height: mapState.height,
-        longitude: mapState.longitude,
-        latitude: mapState.latitude,
-        zoom: mapState.zoom,
-        pitch: mapState.pitch,
-        bearing: mapState.bearing
-      });
+    const viewport = new WebMercatorViewport({ width: mapState.width, height: mapState.height });
+    const [minLng, minLat, maxLng, maxLat] = targetBounds;
+    const fitted = viewport.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 120 });
+    
+    const startLng = mapState.longitude, startLat = mapState.latitude, startZoom = mapState.zoom;
+    const endLng = fitted.longitude, endLat = fitted.latitude, endZoom = Math.max(0, fitted.zoom - 0.5);
 
-      const [x, y] = viewport.project([centroid.lng, centroid.lat]);
-      const marginX = mapState.width * 0.15;
-      const marginY = mapState.height * 0.15;
-      const isOutside = x < marginX || x > (mapState.width - marginX) || y < marginY || y > (mapState.height - marginY);
+    const duration = 2000; 
+    const startTime = performance.now();
 
-      const [minLng, minLat, maxLng, maxLat] = targetBounds;
-      const idealViewport = viewport.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 100 });
-      const zoomDiff = Math.abs(mapState.zoom - idealViewport.zoom);
-      const isZoomChanged = zoomDiff > 0.8;
+    const animateCamera = (currentTime: number) => {
+      let progress = (currentTime - startTime) / duration;
+      if (progress > 1) progress = 1;
+      const ease = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+      
+      dispatch(wrapTo(KEPLER_ID, updateMap({
+        longitude: startLng + (endLng - startLng) * ease,
+        latitude: startLat + (endLat - startLat) * ease,
+        zoom: startZoom + (endZoom - startZoom) * ease
+      })));
 
-      if (isOutside || isZoomChanged) {
-        setShowCenterButton(true);
+      if (progress < 1) requestAnimationFrame(animateCamera);
+      else { 
+        setIsFlying(false); 
+        setTopCenterDismissed(true); // 🚀 MATOU!
       }
-    } catch (error) {}
-  }, [mapState?.latitude, mapState?.longitude, mapState?.zoom, centroid, targetBounds, showCenterButton, isFlying]);
+    };
+    requestAnimationFrame(animateCamera);
+  };
 
   return (
     <aside className="relative flex flex-col w-full h-full min-h-0 bg-gradient-to-b from-[#0a111f] to-[#030508] text-white overflow-hidden">
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-96 h-96 bg-[#1a2b45] rounded-full blur-[140px] opacity-30 pointer-events-none z-0" />
 
-     {/* 🚀 ABAS COM ÍCONES E TOOLTIPS NATIVOS MANTIDOS */}
       <div className="relative flex bg-transparent border-b border-[#1f2b3e]/60 shrink-0 px-2 z-10">
         <button onClick={() => setCurrentTab('layers')} className={getTabClass('layers')} title="Camadas">
           <LayersTabIcon />
         </button>
         <button onClick={() => setCurrentTab('filters')} className={getTabClass('filters')} title="Filtros">
           <FiltersTabIcon />
-        </button>
-        <button onClick={() => setCurrentTab('tooltips')} className={getTabClass('tooltips')} title="Tooltips">
-          <TooltipsTabIcon />
         </button>
       </div>
 
@@ -1124,7 +815,6 @@ export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | '
         {currentTab === 'layers' && (
           <div className="flex flex-col gap-6 pb-6">
             <div className="flex flex-col gap-3 border-b border-[#1f2b3e]/60 pb-5">
-              {/* 🚀 SUBSTITUIÇÃO 2: TÍTULO REMOVIDO E ALINHADO À DIREITA (justify-end) */}
               <div className="flex items-center justify-end">
                 <div className="relative z-[999]" ref={addLayerMenuRef}>
                   <button 
@@ -1193,7 +883,9 @@ export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | '
               const layerId = layer.id || (layer.get && layer.get('id')) || String(index);
               const layerType = layer.type || (layer.get && layer.get('type')) || 'geojson';
               const isLayerVisible = config?.isVisible ?? true;
-              const isCollapsed = collapsedLayers[layerId] ?? true; 
+              const stableLayerKey = `${dataId}_${config?.label || layerId}`;
+              const isCollapsed = collapsedLayers[stableLayerKey] ?? true; 
+              
               const filled = vis?.filled ?? true;
               const fillOpacity = vis?.opacity ?? 0.8;
               const fillHexColor = Array.isArray(config?.color) ? rgbToHex(config.color[0], config.color[1], config.color[2]) : '#ff0000';
@@ -1228,7 +920,7 @@ export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | '
                     <div className="w-8 flex items-center justify-center shrink-0 opacity-0 group-hover:opacity-100 cursor-grab text-[#64748b] hover:text-white transition-opacity" onMouseDown={() => { isDraggingGripRef.current = true; }} onMouseUp={() => { isDraggingGripRef.current = false; }} onMouseLeave={() => { isDraggingGripRef.current = false; }}>
                       <svg className="w-3.5 h-3.5 pointer-events-none" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="9" cy="18" r="2"></circle><circle cx="15" cy="6" r="2"></circle><circle cx="15" cy="12" r="2"></circle><circle cx="15" cy="18" r="2"></circle></svg>
                     </div>
-                    <div className="flex flex-col flex-1 min-w-0 pr-2" onClick={() => toggleLayerCollapse(layerId)}>
+                    <div className="flex flex-col flex-1 min-w-0 pr-2" onClick={() => toggleLayerCollapse(stableLayerKey)}>
                       {editingLayerId === layerId ? (
                         <input type="text" value={editingLayerName} onChange={(e) => setEditingLayerName(e.target.value)} onBlur={() => saveLayerName(layer)} onKeyDown={(e) => { if (e.key === 'Enter') saveLayerName(layer); }} autoFocus className="bg-[#0a0f18] border border-[#C5A059] text-xs text-gray-200 px-2 py-0.5 rounded outline-none w-full max-w-[180px] shadow-[0_0_8px_rgba(197,160,89,0.3)]" onClick={(e) => e.stopPropagation()} />
                       ) : (
@@ -1252,12 +944,26 @@ export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | '
                       <button onClick={(e) => { e.stopPropagation(); handleToggleVis(layer, isLayerVisible); }} className="text-[#64748b] hover:text-white transition-colors p-1 ml-1 rounded">
                         {isLayerVisible ? (<svg className="w-4 h-4 text-[#C5A059]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>) : (<svg className="w-4 h-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>)}
                       </button>
-                      <svg onClick={() => toggleLayerCollapse(layerId)} className={`w-4 h-4 text-[#64748b] transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                      <svg onClick={() => toggleLayerCollapse(stableLayerKey)} className={`w-4 h-4 text-[#64748b] transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
                     </div>
                   </div>
                   <div className={`overflow-hidden transition-all duration-500 ease-in-out ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[1200px] opacity-100'}`}>
                     {dropdownOptions.length > 0 ? (
                       <div className="relative p-5 flex flex-col gap-7 border-t border-[#1f2b3e]/40 z-10 overflow-visible">
+                        {['point', 'cluster', 'heatmap'].includes(layerType) && (
+                          <div className="flex flex-col gap-3 pb-5 border-b border-[#1f2b3e]/40">
+                            <span className="text-[11px] font-medium text-[#8c9fba]">Formato de Visualização</span>
+                            <MaonoDropdown 
+                              value={layerType} 
+                              options={[
+                                { label: <div className="flex items-center gap-2.5"><IconPointType /><span className="mt-0.5">Pontos (Point)</span></div>, value: 'point' },
+                                { label: <div className="flex items-center gap-2.5"><IconClusterType /><span className="mt-0.5">Agrupamentos (Cluster)</span></div>, value: 'cluster' },
+                                { label: <div className="flex items-center gap-2.5"><IconHeatmapType /><span className="mt-0.5">Mapa de Calor (Heatmap)</span></div>, value: 'heatmap' }
+                              ]} 
+                              onChange={(newType: string) => { if(layerType !== newType) dispatch(wrapTo(KEPLER_ID, layerTypeChange(layer, newType))); }} 
+                            />
+                          </div>
+                        )}
                         <div className="flex flex-col gap-4">
                           <div className="flex items-center justify-between">
                             <span className="text-[11px] font-medium text-[#8c9fba]">Preenchimento</span>
@@ -1486,375 +1192,33 @@ export function FilterPanel({ activeTab = 'layers' }: { activeTab?: 'layers' | '
             })}
           </div>
         )}
-        {currentTab === 'tooltips' && (
-          <div className="flex flex-col gap-4 pb-6">
-            {availableDatasets.map((dataset) => {
-              const tooltipConf = interactionConfig?.tooltip?.config || (interactionConfig?.tooltip?.get && interactionConfig.tooltip.get('config'));
-              const fieldsToShow = tooltipConf?.fieldsToShow || (tooltipConf?.get && tooltipConf.get('fieldsToShow')) || {};
-              const datasetFields = fieldsToShow[dataset.id] || (fieldsToShow.get && fieldsToShow.get(dataset.id));
-              const activeFields = getPlainFields(datasetFields);
-              const accentColor = getDatasetAccentColor(dataset.id);
-              return (
-                <div key={dataset.id} className="relative flex flex-col bg-gradient-to-b from-[#131c2a] to-[#0b1019] rounded-xl border border-[#1f2b3e] shadow-2xl overflow-hidden">
-                  <div className="flex items-center gap-2.5 p-4 border-b border-[#1f2b3e]/60 bg-[#0a0f18]/50">
-                    <div className="w-2.5 h-2.5 rounded-full shrink-0 shadow-[0_0_8px_rgba(0,0,0,0.5)]" style={{ backgroundColor: accentColor }} />
-                    <span className="text-[11px] font-bold tracking-widest truncate" style={{ color: accentColor }}>{dataset.label}</span>
-                  </div>
-                  <div className="relative z-10 max-h-[500px] overflow-y-auto maono-scroll p-4 pt-2">
-                    {dataset.fields.map((f: any) => {
-                      const fieldName = f.name || (f.get && f.get('name'));
-                      const isShown = activeFields.some((af: any) => af.name === fieldName);
-                      return (
-                        <div key={fieldName} className="relative flex items-center justify-between py-2.5 border-b border-[#1f2b3e]/30 last:border-0 group">
-                          <span className="text-xs text-[#8c9fba] truncate pr-2 group-hover:text-white transition-colors">{fieldName}</span>
-                          <button onClick={() => handleToggleTooltipField(dataset.id, fieldName)} className={`relative inline-flex h-4 w-8 items-center rounded-full transition-all shrink-0 ${isShown ? 'bg-gradient-to-r from-[#8a6d3b] to-[#C5A059] shadow-[0_0_8px_rgba(197,160,89,0.3)]' : 'bg-[#161f30] shadow-inner'}`}>
-                            <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isShown ? 'translate-x-4' : 'translate-x-1'}`} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
       
-      {/* 🚀 BOTÃO VOO SÍNCRONO */}
-      {showCenterButton && targetBounds && createPortal(
-        <div className="fixed top-20 z-[99999]" style={{ left: 'calc(50% + 140px)', transform: 'translateX(-50%)' }}>
-          <div 
-            onClick={() => {
-              if (isFlying || !mapState?.width || !mapState?.height) return;
-              setIsFlying(true); 
-
-              const startLng = mapState.longitude;
-              const startLat = mapState.latitude;
-              const startZoom = mapState.zoom;
-
-              const viewport = new WebMercatorViewport({ width: mapState.width, height: mapState.height });
-              const [minLng, minLat, maxLng, maxLat] = targetBounds;
-              const fitted = viewport.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 120 });
-              
-              const endLng = fitted.longitude;
-              const endLat = fitted.latitude;
-              const endZoom = Math.max(0, fitted.zoom - 0.5);
-
-              const duration = 2000; 
-              const startTime = performance.now();
-
-              const animateCamera = (currentTime: number) => {
-                const elapsed = currentTime - startTime;
-                let progress = elapsed / duration;
-                if (progress > 1) progress = 1;
-
-                const ease = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
-
-                const currentLng = startLng + (endLng - startLng) * ease;
-                const currentLat = startLat + (endLat - startLat) * ease;
-                const currentZoom = startZoom + (endZoom - startZoom) * ease;
-
-                dispatch(wrapTo(KEPLER_ID, updateMap({
-                  longitude: currentLng,
-                  latitude: currentLat,
-                  zoom: currentZoom
-                })));
-
-                if (progress < 1) {
-                  requestAnimationFrame(animateCamera);
-                } else {
-                  setShowCenterButton(false);
-                  setIsFlying(false);
-                }
-              };
-              requestAnimationFrame(animateCamera);
-            }}
-            role="button"
-            style={{ backgroundColor: '#C5A059', color: '#0a0f18', border: '2px solid #dfb96f', boxShadow: '0 15px 40px rgba(197,160,89,0.5)' }}
-            className={`flex items-center gap-3 px-8 py-3.5 text-sm font-extrabold uppercase tracking-widest rounded-full transition-all duration-300 transform group ${isFlying ? 'opacity-70 scale-95 pointer-events-none cursor-wait' : 'opacity-100 hover:brightness-110 hover:-translate-y-1 cursor-pointer'}`}
-          >
-            <div className="relative flex items-center justify-center w-6 h-6 rounded-full bg-[#0a0f18]/20 transition-colors">
-              <svg style={{ color: '#0a0f18' }} className={`w-4 h-4 transition-transform ${isFlying ? 'animate-spin' : 'group-hover:scale-110'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {isFlying ? ( <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /> ) : ( <> <circle cx="12" cy="12" r="3" strokeWidth="2.5" /> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 2v3m0 14v3m10-10h-3M5 12H2" /> </> )}
-              </svg>
-            </div>
-            <span style={{ color: '#0a0f18' }}>{isFlying ? "Centralizando..." : "Centralizar Resultados"}</span>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* 🚀 CONTROLES FLUTUANTES DIRETOS */}
-      {createPortal(
-        <div className="fixed bottom-10 right-6 z-[9999] flex flex-col items-end gap-4 pointer-events-none">
-          
-          <button 
-            onClick={() => dispatch(wrapTo(KEPLER_ID, toggleMapControl('mapLegend')))} 
-            className={`pointer-events-auto w-12 h-12 flex items-center justify-center rounded-xl shadow-[0_10px_25px_rgba(0,0,0,0.5)] border transition-all duration-300 ${isMapLegendActive ? 'bg-[#C5A059] border-[#dfb96f] text-[#0a0f18] scale-105' : 'bg-[#131c2a] border-[#1f2b3e] text-[#C5A059] hover:text-[#dfb96f] hover:border-[#C5A059] hover:bg-[#1a2435]'}`} 
-            title="Mostrar Legenda"
-          >
-             <LegendMapIcon />
-          </button>
-
-          {/* 🚀 NOVO BOTÃO: Inserir Marcador (TOGGLE FIXO) */}
-          <div className="flex flex-col items-end gap-4 pointer-events-auto relative">
-            {!previewDataId && (
-              <button 
-                onClick={() => {
-                   if (markerState === 'placing') {
-                      setMarkerState('idle');
-                   } else {
-                      setMarkerState('placing');
-                      setShowMarkerMenu(false);
-                   }
-                }} 
-                className={`w-12 h-12 flex items-center justify-center rounded-xl shadow-[0_10px_25px_rgba(0,0,0,0.5)] border transition-all duration-300 ${markerState === 'placing' ? 'bg-[#C5A059] border-[#dfb96f] text-[#0a0f18] scale-105' : 'bg-[#131c2a] border-[#1f2b3e] text-[#C5A059] hover:text-[#dfb96f] hover:border-[#C5A059] hover:bg-[#1a2435]'}`}
-                title={markerState === 'placing' ? 'Cancelar inserção' : 'Inserir Marcador no Mapa'}
-              >
-                <PinMarkerIcon />
-              </button>
-            )}
-
-            {/* Painel de Salvar/Descartar */}
-            {previewDataId && (
-              <div className="w-[280px] bg-[#0a0f18] border border-[#1f2b3e] rounded-2xl shadow-2xl p-4 flex flex-col gap-4 animate-fade-in">
-                  <h3 className="text-xs font-bold text-gray-100 tracking-wide flex items-center gap-2">
-                    <IsochroneWavesIcon /> Isócrona Gerada
-                  </h3>
-                  <div className="flex gap-2 w-full">
-                      <button 
-                        onClick={() => { setPreviewDataId(null); setMarkerState('idle'); setMarkerOrigin(null); setShowMarkerMenu(false); }}
-                        className="flex-1 py-2.5 bg-[#0E8A5E] hover:bg-[#11A872] text-white text-[10px] font-bold uppercase tracking-widest rounded-lg shadow-lg transition-all flex justify-center items-center gap-1"
-                      >
-                        Salvar
-                      </button>
-                      <button 
-                        onClick={() => { dispatch(wrapTo(KEPLER_ID, removeDataset(previewDataId))); setPreviewDataId(null); }}
-                        className="flex-1 py-2.5 bg-[#131c2a] border border-[#ef4444]/40 hover:border-[#ef4444] text-[#ef4444] hover:bg-[#ef4444]/10 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all flex justify-center items-center gap-1"
-                      >
-                        Descartar
-                      </button>
-                  </div>
-              </div>
-            )}
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* 🚀 O ALFINETE GEOGRÁFICO ANCORADO AO CHÃO & MENU DE CONTEXTO */}
-      {(() => {
-        let pinX = -9999;
-        let pinY = -9999;
-        let shouldShowPin = false;
-
-        if (markerState === 'placed' && markerOrigin && !previewDataId && mapState?.width > 0 && mapState?.height > 0) {
-          try {
-            const viewport = new WebMercatorViewport({
-              width: mapState.width, height: mapState.height,
-              longitude: mapState.longitude || 0, latitude: mapState.latitude || 0,
-              zoom: mapState.zoom || 0, pitch: mapState.pitch || 0, bearing: mapState.bearing || 0
-            });
-            const projected = viewport.project([markerOrigin.lng, markerOrigin.lat]);
-            if (projected && !isNaN(projected[0]) && !isNaN(projected[1])) {
-              pinX = projected[0];
-              pinY = projected[1];
-              shouldShowPin = true;
-            }
-          } catch(e) {}
-        }
-
-        const handlePinPointerDown = (e: React.PointerEvent) => {
-          e.stopPropagation(); 
-          setIsDraggingPin(true);
-          pinDragInfo.current = { startX: e.clientX, startY: e.clientY };
-          (e.target as HTMLElement).setPointerCapture(e.pointerId);
-        };
-
-        const handlePinPointerMove = (e: React.PointerEvent) => {
-          if (!isDraggingPin || !mapState?.width) return;
-          e.stopPropagation();
-
-          const viewport = new WebMercatorViewport({
-            width: mapState.width, height: mapState.height,
-            longitude: mapState.longitude || 0, latitude: mapState.latitude || 0,
-            zoom: mapState.zoom || 0, pitch: mapState.pitch || 0, bearing: mapState.bearing || 0
-          });
-          const [lng, lat] = viewport.unproject([e.clientX, e.clientY]);
-          
-          if (!isNaN(lng) && !isNaN(lat)) {
-            setMarkerOrigin({ lat, lng });
-          }
-        };
-
-        const handlePinPointerUp = (e: React.PointerEvent) => {
-          e.stopPropagation();
-          if (isDraggingPin) {
-            setIsDraggingPin(false);
-            (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-            
-            const dx = Math.abs(e.clientX - pinDragInfo.current.startX);
-            const dy = Math.abs(e.clientY - pinDragInfo.current.startY);
-            
-            if (dx < 3 && dy < 3) {
-                setShowMarkerMenu(prev => !prev);
-            } else {
-                setShowMarkerMenu(false);
-            }
-          }
-        };
-
-        return shouldShowPin ? createPortal(
-          <div
-            className="fixed z-[99998] flex flex-col items-center pointer-events-none"
-            style={{ left: pinX, top: pinY, transform: 'translate(-50%, -100%)', touchAction: 'none' }}
-          >
-            {/* 2. ALÇA DE ARRASTO (Drag Handle) */}
-            <div
-              className={`pointer-events-auto transition-transform ${isDraggingPin ? 'scale-125 cursor-grabbing drop-shadow-[0_20px_20px_rgba(0,0,0,0.8)]' : 'hover:scale-110 cursor-pointer drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)]'}`}
-              onPointerDown={handlePinPointerDown}
-              onPointerMove={handlePinPointerMove}
-              onPointerUp={handlePinPointerUp}
-              title="Clique para opções. Arraste para mover."
+      {/* 🚀 TOAST DE VOO ÚNICO (CENTRALIZAR APÓS FILTRO) */}
+      {!topCenterDismissed && targetBounds && createPortal(
+        <div className="fixed top-20 z-[99999] animate-fade-in" style={{ left: 'calc(50% + 140px)', transform: 'translateX(-50%)' }}>
+          <div className="flex items-center bg-[#C5A059] rounded-full shadow-[0_15px_40px_rgba(197,160,89,0.5)] overflow-hidden border-2 border-[#dfb96f]">
+            <div 
+              onClick={handleTopCenterFly}
+              role="button"
+              className={`flex items-center gap-3 px-6 py-3 text-sm font-extrabold uppercase tracking-widest transition-all duration-300 group ${isFlying ? 'opacity-70 pointer-events-none cursor-wait' : 'hover:brightness-110 cursor-pointer'}`}
             >
-              <div className="text-[#C5A059]">
-                <PinMarkerIcon />
+              <div className="relative flex items-center justify-center w-6 h-6 rounded-full bg-[#0a0f18]/20 transition-colors">
+                <svg style={{ color: '#0a0f18' }} className={`w-4 h-4 transition-transform ${isFlying ? 'animate-spin' : 'group-hover:scale-110'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {isFlying ? ( <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /> ) : ( <> <circle cx="12" cy="12" r="3" strokeWidth="2.5" /> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 2v3m0 14v3m10-10h-3M5 12H2" /> </> )}
+                </svg>
               </div>
+              <span style={{ color: '#0a0f18' }}>{isFlying ? "Centralizando..." : "Centralizar Filtro"}</span>
             </div>
-
-            <span className="mt-1 px-2 py-0.5 bg-[#0a0f18]/80 text-[#C5A059] text-[9px] font-bold uppercase tracking-widest rounded-md border border-[#C5A059]/30 shadow-lg pointer-events-none select-none">
-              {isDraggingPin ? 'Movendo...' : 'Origem'}
-            </span>
-
-            {/* 3. O MENU DE CONTEXTO DO MARCADOR (Fora da área de arrasto) */}
-            {showMarkerMenu && !isDraggingPin && (
-               <div className="absolute left-full top-0 ml-4 w-48 bg-[#0a0f18] border border-[#1f2b3e] rounded-xl shadow-[0_20px_40px_rgba(0,0,0,0.8)] flex flex-col p-1.5 pointer-events-auto">
-                  <button 
-                     onClick={(e) => { e.stopPropagation(); setShowIsoModal(true); setShowMarkerMenu(false); }}
-                     className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-white hover:bg-[#1a2435] hover:text-[#C5A059] rounded-lg transition-colors"
-                  >
-                     <IsochroneWavesIcon /> Criar Isócronas
-                  </button>
-                  <div className="h-[1px] bg-[#1f2b3e] my-1 mx-2" />
-                  <button 
-                     onClick={(e) => { e.stopPropagation(); setMarkerState('idle'); setMarkerOrigin(null); setShowMarkerMenu(false); }}
-                     className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-[#ef4444]/10 hover:text-[#ef4444] rounded-lg transition-colors"
-                  >
-                     <TrashIcon /> Remover Marcador
-                  </button>
-               </div>
-            )}
-          </div>,
-          document.body
-        ) : null;
-      })()}
-
-      {/* 🚀 MODAL DE CONFIGURAÇÃO DE ISÓCRONAS */}
-      {showIsoModal && createPortal(
-         <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-[#030508]/80 backdrop-blur-sm p-4">
-            <div className="bg-[#0a0f18] border border-[#1f2b3e] rounded-2xl w-[400px] shadow-[0_30px_60px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col">
-               
-               <div className="flex items-center justify-between px-6 py-5 border-b border-[#1f2b3e]/80 bg-[#131c2a]">
-                 <h3 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
-                   <IsochroneWavesIcon /> Configurar Isócronas
-                 </h3>
-                 <button onClick={() => setShowIsoModal(false)} className="text-gray-500 hover:text-white transition-colors"><CloseIcon /></button>
-               </div>
-
-               <div className="p-6 flex flex-col gap-6">
-                  {/* Tipo de Análise */}
-                  <div className="flex flex-col gap-3">
-                     <label className="text-[10px] text-[#8c9fba] uppercase tracking-widest font-bold">Método de Geração</label>
-                     <div className="flex gap-4">
-                        <label className="flex items-center gap-2 text-xs text-white cursor-pointer">
-                           <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isoType === 'time' ? 'border-[#C5A059] bg-[#C5A059]/20' : 'border-[#2a3a54]'}`}>
-                              {isoType === 'time' && <div className="w-2 h-2 bg-[#C5A059] rounded-full" />}
-                           </div>
-                           <input type="radio" value="time" checked={isoType === 'time'} onChange={() => setIsoType('time')} className="hidden" />
-                           Tempo
-                        </label>
-                        <label className="flex items-center gap-2 text-xs text-white cursor-pointer">
-                           <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isoType === 'distance' ? 'border-[#C5A059] bg-[#C5A059]/20' : 'border-[#2a3a54]'}`}>
-                              {isoType === 'distance' && <div className="w-2 h-2 bg-[#C5A059] rounded-full" />}
-                           </div>
-                           <input type="radio" value="distance" checked={isoType === 'distance'} onChange={() => setIsoType('distance')} className="hidden" />
-                           Distância
-                        </label>
-                     </div>
-                  </div>
-
-                  {/* Modalidade (Exibida apenas se for por Tempo) */}
-                  {isoType === 'time' && (
-                     <div className="flex flex-col gap-2">
-                        <label className="text-[10px] text-[#8c9fba] uppercase tracking-widest font-bold">Modalidade do Movimento</label>
-                        <select 
-                           value={isoMode} 
-                           onChange={(e) => setIsoMode(e.target.value)}
-                           className="w-full bg-[#131c2a] border border-[#2a3a54] text-white text-xs rounded-lg p-3 outline-none focus:border-[#C5A059]"
-                        >
-                           <option value="drive_traffic">Dirigindo com Trânsito </option>
-                           <option value="drive">Dirigindo (Normal)</option>
-                           <option value="bicycle">Bicicleta</option>
-                           <option value="walk">Caminhando</option>
-                        </select>
-                     </div>
-                  )}
-
-                  {/* Intervalos */}
-                  <div className="flex flex-col gap-3">
-                     <label className="text-[10px] text-[#8c9fba] uppercase tracking-widest font-bold">
-                        Intervalos de {isoType === 'time' ? 'Tempo (Minutos)' : 'Distância (Quilômetros)'}
-                     </label>
-                     <div className="flex flex-col gap-2">
-                        {isoRanges.map((val, idx) => (
-                           <div key={idx} className="flex gap-2 items-center">
-                              <input 
-                                 type="number" 
-                                 value={val} 
-                                 onChange={(e) => {
-                                    const newRanges = [...isoRanges];
-                                    newRanges[idx] = e.target.value;
-                                    setIsoRanges(newRanges);
-                                 }}
-                                 className="flex-1 bg-[#131c2a] border border-[#2a3a54] text-white text-xs rounded-lg p-2.5 outline-none focus:border-[#C5A059]"
-                                 placeholder={`Isócrona 0${idx + 1}`}
-                              />
-                              {isoRanges.length > 1 && (
-                                 <button onClick={() => setIsoRanges(isoRanges.filter((_, i) => i !== idx))} className="p-2 text-gray-500 hover:text-red-400">
-                                    <TrashIcon />
-                                 </button>
-                              )}
-                           </div>
-                        ))}
-                     </div>
-                     {isoRanges.length < 4 && (
-                        <button 
-                           onClick={() => setIsoRanges([...isoRanges, ''])}
-                           className="text-left text-[10px] text-[#C5A059] font-bold uppercase tracking-widest hover:brightness-125 transition-all mt-1"
-                        >
-                           + Adicionar
-                        </button>
-                     )}
-                  </div>
-
-                  {/* Submit */}
-                  <button 
-                     onClick={handleCalculateIsochrone}
-                     disabled={isLoadingIsochrone}
-                     className="w-full mt-2 py-3.5 bg-gradient-to-r from-[#172233] to-[#0d141f] border border-[#C5A059]/30 hover:border-[#C5A059] text-[#C5A059] text-[10px] font-bold uppercase tracking-widest rounded-xl shadow-lg transition-all disabled:opacity-50 flex justify-center items-center gap-2"
-                  >
-                     {isLoadingIsochrone ? (
-                        <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                     ) : (
-                        'Concluir'
-                     )}
-                  </button>
-
-               </div>
+            <div 
+              onClick={() => setTopCenterDismissed(true)}
+              className="px-3 py-3 border-l border-[#0a0f18]/20 hover:bg-[#0a0f18]/10 cursor-pointer transition-colors"
+            >
+              <CloseIcon />
             </div>
-         </div>,
-         document.body
+          </div>
+        </div>,
+        document.body
       )}
 
       {exportingDataset && (

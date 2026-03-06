@@ -8,23 +8,38 @@ export function DataPanel({ onOpenImporter }: { onOpenImporter: () => void }) {
   const dispatch = useDispatch();
   const datasetsRaw = useSelector((state: any) => selectDatasets(state, KEPLER_ID));
   const [viewingDataset, setViewingDataset] = useState<any | null>(null);
+  
+  // 🚀 ESTADOS PARA EDIÇÃO E RE-RENDER INSTANTÂNEO
+  const [editingDataId, setEditingDataId] = useState<string | null>(null);
+  const [editingDataName, setEditingDataName] = useState<string>('');
+  const [forceRenderCounter, setForceRenderCounter] = useState(0); 
 
   const availableDatasets = useMemo(() => {
     const list: any[] = [];
     if (!datasetsRaw) return list;
     const entries = typeof datasetsRaw.entrySeq === 'function' ? datasetsRaw.entrySeq().toArray() : Object.entries(datasetsRaw);
     
+    // 🚀 Consulta o nosso Cofre Global de Nomes (Interceptação)
+    const customLabels = (window as any).__MAONO_CUSTOM_LABELS__ || {};
+    
     for (const [dataId, ds] of entries as any) {
       const fields = ds?.fields || ds?.get?.('fields') || [];
       const fieldsArray = Array.isArray(fields) ? fields : fields.toArray ? fields.toArray() : [];
+      
       let datasetLabel = dataId; 
       if (ds) {
          datasetLabel = ds.label || (ds.get && ds.get('label')) || (ds.info && ds.info.label) || (ds.getIn && ds.getIn(['info', 'label'])) || dataId;
       }
+
+      // 🚀 Substitui o nome nativo pelo nome renomeado, se existir no cofre
+      if (customLabels[dataId]) {
+         datasetLabel = customLabels[dataId];
+      }
+
       list.push({ id: dataId, label: datasetLabel, fields: fieldsArray, rawDataset: ds });
     }
     return list;
-  }, [datasetsRaw]);
+  }, [datasetsRaw, forceRenderCounter]); // 🚀 Escuta o counter para atualizar na hora!
 
   const DATASET_ACCENT_COLORS = ['#C5A059', '#E2D7C1', '#9CA3AF', '#CD9575', '#64748B'];
 
@@ -38,6 +53,38 @@ export function DataPanel({ onOpenImporter }: { onOpenImporter: () => void }) {
     if(window.confirm("Atenção: Excluir esta base de dados apagará todas as camadas vinculadas a ela. Deseja continuar?")) {
       dispatch(wrapTo(KEPLER_ID, removeDataset(datasetId))); 
     }
+  };
+
+  // 🚀 FUNÇÕES DE EDIÇÃO DE NOME BLINDADAS
+  const startEditingData = (datasetId: string, currentName: string) => {
+    setEditingDataId(datasetId);
+    setEditingDataName(currentName);
+  };
+
+  const saveDataName = (dataset: any) => {
+    if (editingDataId && editingDataName.trim() !== '') {
+      try {
+        // 1. Abre o cofre global na memória do navegador
+        const win = window as any;
+        win.__MAONO_CUSTOM_LABELS__ = win.__MAONO_CUSTOM_LABELS__ || {};
+        
+        // 2. Salva o novo nome atrelado ao ID único da base
+        win.__MAONO_CUSTOM_LABELS__[dataset.id] = editingDataName;
+
+        // 3. Tenta mutar a raiz do Kepler silenciosamente (para que futuras exportações peguem o nome)
+        if (dataset.rawDataset) {
+            dataset.rawDataset.label = editingDataName;
+            if (dataset.rawDataset.info) dataset.rawDataset.info.label = editingDataName;
+        }
+
+        // 4. Força o React a re-calcular e pintar o novo nome na tela instantaneamente
+        setForceRenderCounter(prev => prev + 1);
+
+      } catch (e) {
+        console.warn("Falha silenciosa ao renomear:", e);
+      }
+    }
+    setEditingDataId(null);
   };
 
   return (
@@ -71,14 +118,44 @@ export function DataPanel({ onOpenImporter }: { onOpenImporter: () => void }) {
             return (
               <div key={ds.id} className="relative flex flex-col bg-gradient-to-b from-[#131c2a] to-[#0b1019] rounded-xl border border-[#1f2b3e] shadow-[0_5px_15px_rgba(0,0,0,0.3)] transition-all hover:border-[#C5A059]/30 group">
                 <div className="absolute top-0 left-0 bottom-0 w-1.5 rounded-l-xl z-10" style={{ backgroundColor: accentColor }}></div>
+                
                 <div className="flex items-center justify-between p-5 pl-6">
-                  <div className="flex flex-col min-w-0 pr-4">
-                    <span className="text-sm font-semibold text-gray-200 tracking-wide truncate" title={ds.label}>{ds.label}</span>
+                  
+                  {/* Bloco da Esquerda (Nome + Badges) */}
+                  <div className="flex flex-col min-w-0 pr-4 flex-1">
+                    
+                    {/* Lógica de Edição Inline */}
+                    {editingDataId === ds.id ? (
+                        <input 
+                           type="text" 
+                           value={editingDataName} 
+                           onChange={(e) => setEditingDataName(e.target.value)} 
+                           onBlur={() => saveDataName(ds)} 
+                           onKeyDown={(e) => { if (e.key === 'Enter') saveDataName(ds); }} 
+                           autoFocus 
+                           className="bg-[#0a0f18] border border-[#C5A059] text-sm text-gray-200 px-2 py-0.5 rounded outline-none w-full shadow-[0_0_8px_rgba(197,160,89,0.3)]" 
+                           onClick={(e) => e.stopPropagation()} 
+                        />
+                    ) : (
+                        <div className="flex items-center gap-2 cursor-pointer w-max" onClick={() => startEditingData(ds.id, ds.label)}>
+                           {/* 🚀 O texto fica branco no hover do card */}
+                           <span className="text-sm font-semibold text-gray-200 tracking-wide truncate transition-colors group-hover:text-white" title={ds.label}>
+                             {ds.label}
+                           </span>
+                           {/* 🚀 O lápis aparece ao passar o mouse no card */}
+                           <button className="opacity-0 group-hover:opacity-100 text-[#64748b] hover:text-[#C5A059] transition-all shrink-0">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                           </button>
+                        </div>
+                    )}
+
                     <div className="flex items-center gap-3 mt-1.5">
                       <span className="text-[10px] text-[#64748b] bg-[#1a2435] px-2 py-0.5 rounded font-mono">{numRows.toLocaleString('pt-BR')} linhas</span>
                       <span className="text-[10px] text-[#64748b] bg-[#1a2435] px-2 py-0.5 rounded font-mono">{numCols} colunas</span>
                     </div>
                   </div>
+
+                  {/* Bloco da Direita (Ações) */}
                   <div className="flex items-center gap-2 shrink-0">
                     <button onClick={() => setViewingDataset(ds)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#1a2435] text-[#8c9fba] hover:text-[#C5A059] hover:bg-[#C5A059]/10 transition-colors" title="Explorar Dados">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
@@ -87,6 +164,7 @@ export function DataPanel({ onOpenImporter }: { onOpenImporter: () => void }) {
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                     </button>
                   </div>
+
                 </div>
               </div>
             );
@@ -106,7 +184,6 @@ export function DataPanel({ onOpenImporter }: { onOpenImporter: () => void }) {
                 <h2 className="text-xl font-medium text-gray-100 tracking-wide">{viewingDataset.label}</h2>
                 <span className="px-2.5 py-1 bg-[#1a2435] text-[#8c9fba] text-[10px] rounded-full ml-3 border border-[#1f2b3e]">{viewingDataset.fields?.length} Colunas</span>
               </div>
-              {/* 🚀 BOTÃO 'X' BLINDADO - DATA EXPLORER */}
               <button 
                 onClick={() => setViewingDataset(null)} 
                 style={{ color: '#FFFFFF' }}
