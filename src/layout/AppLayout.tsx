@@ -6,6 +6,7 @@ import { Topbar } from "../components/Topbar";
 import { FilterPanel } from "../components/FilterPanel";
 import { DataPanel } from "../components/DataPanel";
 import { AnalyticsPanel } from "../components/AnalyticsPanel"; 
+import { UserManagementPanel } from "../components/UserManagementPanel"; // 🚀 1. IMPORTAÇÃO DO PAINEL
 import { KeplerPanelErrorBoundary } from "../components/KeplerPanelErrorBoundary";
 import { MaonoDataImporter } from "../components/MaonoDataImporter";
 import { MapOverlayControls } from "../components/MapOverlayControls"; 
@@ -17,7 +18,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [isPanelOpen, setIsPanelOpen] = useState(true);
   const [isImporterOpen, setIsImporterOpen] = useState(false);
   
-  // 🚀 ESTADOS ELEVADOS: O layout agora controla as DUAS gavetas externas
+  // ESTADOS ELEVADOS: O layout agora controla as DUAS gavetas externas
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
   const [isColumnsOpen, setIsColumnsOpen] = useState(false); 
 
@@ -30,11 +31,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const handlePanelSelect = (panel: string) => {
     dispatch(wrapTo(KEPLER_ID, toggleModal(null)));
     
-    // 🚀 Fecha as gavetas ao trocar de aba
+    // Fecha as gavetas ao trocar de aba
     setIsAIPanelOpen(false); 
     setIsColumnsOpen(false);
     
-    if (panel === "home" || panel === "users") {
+    // 🚀 2. REMOVIDO o "users" daqui. Se ficasse aqui, o painel nunca abriria!
+    if (panel === "home") {
       setActivePanel(panel);
       setIsPanelOpen(false);
       return;
@@ -48,7 +50,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const isPanelActive = ["layers", "dados", "charts"].includes(activePanel);
+  // 🚀 3. ADICIONADO "users" no array que permite o painel ser renderizado
+  const isPanelActive = ["layers", "dados", "charts", "users"].includes(activePanel);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#020305]">
@@ -63,7 +66,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             className="absolute top-0 left-0 h-full z-50 transition-all duration-500 ease-out flex"
             style={{ 
               transform: isPanelOpen && isPanelActive ? 'translateX(0)' : 'translateX(-100%)', 
-              width: activePanel === 'charts' ? '50%' : '380px' 
+              // 🚀 4. LARGURA: Se for "charts" ou "users", ocupa 50% da tela para a tabela respirar
+              width: ['charts', 'users'].includes(activePanel) ? '50%' : '380px' 
             }}
           >
             <div className="w-full h-full bg-[#04060a]/95 backdrop-blur-xl shadow-[20px_0_40px_rgba(0,0,0,0.8)] border-r border-[#161f30]">
@@ -71,7 +75,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 {activePanel === "layers" && <FilterPanel />}
                 {activePanel === "dados" && <DataPanel onOpenImporter={() => setIsImporterOpen(true)} />}
                 
-                {/* 🚀 Passando o controle das gavetas para o Painel de Análises */}
+                {/* 🚀 5. INSERÇÃO DO COMPONENTE NA ÁRVORE DE RENDERIZAÇÃO */}
+                {activePanel === "users" && <UserManagementPanel />}
+                
                 {activePanel === "charts" && (
                   <AnalyticsPanel 
                     isAIPanelOpen={isAIPanelOpen} 
@@ -88,22 +94,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 type="button"
                 onClick={() => {
                   setIsPanelOpen(!isPanelOpen);
-                  // 🚀 Fecha tudo junto ao minimizar!
                   if (isPanelOpen) {
                     setIsAIPanelOpen(false);
                     setIsColumnsOpen(false);
                   }
                 }}
-                className="absolute top-36 flex items-center justify-center transition-all duration-500 ease-in-out cursor-pointer group outline-none z-50"
+                className="absolute top-29 flex items-center justify-center transition-all duration-500 ease-in-out cursor-pointer group outline-none z-50"
                 style={{
-                  // 🚀 MATEMÁTICA CIRÚRGICA: 
-                  // - IA aberta (400px) = -428px
-                  // - Colunas abertas (300px) = -328px
                   right: activePanel === 'charts' 
-                    ? (isAIPanelOpen ? '-428px' : isColumnsOpen ? '-328px' : '-28px')
-                    : '-28px', 
-                  width: '28px',
-                  height: '48px', 
+                    ? (isAIPanelOpen ? '-428px' : isColumnsOpen ? '-328px' : '-21px')
+                    : '-21px', 
+                  width: '19px',
+                  height: '50px', 
                   backgroundColor: '#0a0f18',
                   borderTop: '2px solid #C5A059',
                   borderRight: '2px solid #C5A059',
@@ -111,7 +113,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   borderLeft: 'none', 
                   borderRadius: '0 12px 12px 0',
                   color: '#C5A059',
-                  boxShadow: '4px 0 10px rgba(197,160,89,0.25), inset 2px 0 5px rgba(197,160,89,0.1)' 
+                  boxShadow: '4px 0 10px rgba(197,160,89,0.25), inset 2px 0 5px rgba(197,160,89,0.3)' 
                 }}
               >
                 <svg className="w-5 h-5 transition-transform group-hover:scale-110" style={{ filter: 'drop-shadow(0 0 3px rgba(197,160,89,0.7))' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">

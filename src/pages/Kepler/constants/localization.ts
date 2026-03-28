@@ -80,4 +80,9 @@ export const messages = {
     "loadRemoteMap.clickHere": "点击此处",
     "loadRemoteMap.fetch": "获取",
   },
+  // 🚀 ADICIONADO: FORÇANDO A CORREÇÃO NO IDIOMA PORTUGUÊS (Maõno UI)
+  pt: {
+    "mapControl.layerLegend": "Legenda", // Corrige no cabeçalho
+    "layerLegend.title": "Legenda" // Garante correção caso a versão do kepler chame esta chave
+  }
 };

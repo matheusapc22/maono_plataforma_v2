@@ -180,3 +180,187 @@ body {
 .kepler-gl .modal--close:hover svg {
   fill: #C5A059 !important;
 }
+
+/* ========================================================
+   🏆 MAÕNO THEME: LEGENDA 100% BLINDADA E SCROLL CIRÚRGICO
+   ======================================================== */
+
+/* 🚀 1. O SEQUESTRO DO PAI (A Borda Externa e o Drag Handle) */
+/* O Kepler cria uma div "Pai" para gerenciar o arrasto. É ELA que fica azul! */
+.kepler-gl div:has(> .map-control-panel:has(.map-legend)) {
+  outline: none !important;
+  border-radius: 12px !important;
+}
+
+/* Quando passa o mouse na legenda, a borda EXTERNA do Pai fica dourada */
+.kepler-gl div:has(> .map-control-panel:has(.map-legend)):hover,
+.kepler-gl div:has(> .map-control-panel:has(.map-legend)):focus-within,
+.kepler-gl div:has(> .map-control-panel:has(.map-legend)).active {
+  box-shadow: 0 25px 50px rgba(0,0,0,0.9), 0 0 0 2px #C5A059 !important; 
+}
+
+/* 🚀 2. A "ABINHA" DE ARRASTAR (Pinta o Azul de Dourado) */
+/* Ataca diretamente o irmão do painel que o Kepler usa para o drag */
+.kepler-gl div:has(> .map-control-panel:has(.map-legend)) > div:not(.map-control-panel) {
+  background-color: #C5A059 !important; 
+}
+
+/* 3. O PAINEL PRINCIPAL (Limpeza) */
+.kepler-gl .map-control-panel:has(.map-legend) {
+  background-color: rgba(10, 15, 24, 0.95) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(197, 160, 89, 0.4) !important;
+  border-radius: 12px !important;
+  width: 240px !important;
+  margin: 0 !important;
+  box-shadow: none !important; /* Removemos a sombra daqui para não conflitar com a do Pai */
+}
+
+/* 4. O CABEÇALHO DA LEGENDA */
+.kepler-gl .map-control-panel:has(.map-legend) > div:first-child {
+  background: linear-gradient(to right, #131c2a, #0a0f18) !important;
+  border-bottom: 1px solid #1f2b3e !important;
+  border-radius: 12px 12px 0 0 !important;
+  padding: 12px 16px !important;
+}
+
+/* FORÇAR A PALAVRA "LEGENDA" */
+.kepler-gl .map-control-panel:has(.map-legend) > div:first-child span {
+  font-size: 0 !important;
+  visibility: hidden !important;
+}
+.kepler-gl .map-control-panel:has(.map-legend) > div:first-child span::after {
+  content: "LEGENDA" !important;
+  visibility: visible !important;
+  font-size: 11px !important;
+  color: #C5A059 !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.15em !important;
+  display: inline-block;
+  margin-top: 2px;
+}
+
+/* ÍCONE DE MINIMIZAR DOURADO */
+.kepler-gl .map-control-panel:has(.map-legend) > div:first-child svg {
+  fill: #C5A059 !important;
+  color: #C5A059 !important;
+  transition: all 0.2s ease !important;
+}
+.kepler-gl .map-control-panel:has(.map-legend) > div:first-child div:hover svg {
+  fill: #E2C275 !important;
+  transform: scale(1.15) !important;
+  filter: drop-shadow(0 0 5px rgba(197, 160, 89, 0.8)) !important;
+}
+
+/* 🚀 5. A SCROLLBAR COLADA NO CANTO (Engenharia Reversa de Padding) */
+/* Tiramos o padding lateral da caixa externa que afastava a scrollbar */
+.kepler-gl .map-control-panel:has(.map-legend) .map-control-panel__content {
+  background: transparent !important;
+  padding: 16px 0 !important; /* Topo/Base: 16px, Laterais: 0 */
+}
+
+/* Injetamos o padding DENTRO da caixa que rola (map-legend) */
+.kepler-gl .map-control-panel:has(.map-legend) .map-legend {
+  padding: 0 16px !important; /* Laterais com 16px para o texto não colar na borda */
+}
+
+/* Estilização da Scrollbar Fina e Dourada */
+.kepler-gl .map-control-panel:has(.map-legend) *::-webkit-scrollbar {
+  width: 4px !important;
+}
+.kepler-gl .map-control-panel:has(.map-legend) *::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+.kepler-gl .map-control-panel:has(.map-legend) *::-webkit-scrollbar-thumb {
+  background: #C5A059 !important;
+  border-radius: 4px !important;
+}
+.kepler-gl .map-control-panel:has(.map-legend) *::-webkit-scrollbar-thumb:hover {
+  background: #E2C275 !important;
+}
+
+/* 6. DESIGN DAS CAMADAS E BARRAS INTERNAS */
+.kepler-gl .map-legend .legend--layer_name {
+  color: #ffffff !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  font-weight: bold !important;
+  margin-bottom: 12px !important;
+}
+.kepler-gl .map-legend .legend--layer_type {
+  display: none !important;
+}
+.kepler-gl .map-legend .layer-color-legend {
+  color: #8c9fba !important;
+  font-family: inherit !important;
+  font-size: 11px !important;
+}
+.kepler-gl .map-legend .layer-color-legend__domain {
+  color: #64748b !important;
+  font-size: 10px !important;
+  font-weight: bold !important;
+}
+.kepler-gl .map-legend rect {
+  rx: 3px !important;
+}
+
+/* ========================================================
+   🏆 MAÕNO THEME: TOOLTIPS (MAP POPOVER PERFEITO)
+   ======================================================== */
+
+/* 1. A Caixa Principal do Tooltip (Fundo, Blur e Borda Dourada) */
+.kepler-gl .map-popover {
+  background-color: rgba(10, 15, 24, 0.95) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(197, 160, 89, 0.4) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 15px 30px rgba(0,0,0,0.8), 0 0 15px rgba(197,160,89,0.1) !important;
+  /* Largura livre para acomodar textos grandes sem quebrar a tabela nativa */
+  width: auto !important; 
+  max-width: 450px !important;
+}
+
+/* Remove a setinha nativa apontando pro mouse */
+.kepler-gl .map-popover::before,
+.kepler-gl .map-popover::after {
+  display: none !important;
+}
+
+/* 2. O Espaçamento das Bordas (O Respiro Correto!) */
+.kepler-gl .map-popover__inner {
+  padding: 16px !important; /* Cria o espaço exato nas margens superior, inferior e laterais */
+}
+
+/* 3. O Cabeçalho (Nome da Camada) */
+.kepler-gl .layer-hover-info__header {
+  background: linear-gradient(to right, #131c2a, #0a0f18) !important;
+  border-bottom: 1px solid #1f2b3e !important;
+  
+  /* A margem negativa puxa o fundo escuro para cobrir o padding de 16px do pai */
+  margin: -16px -16px 16px -16px !important;
+  padding: 12px 16px !important;
+}
+
+/* Texto do Cabeçalho (Dourado e Maiúsculo) */
+.kepler-gl .layer-hover-info__header span {
+  color: #C5A059 !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase !important;
+}
+
+/* Coluna da esquerda (Nome) */
+.kepler-gl .map-popover .row__name {
+  color: #8c9fba !important; 
+  font-weight: 500 !important;
+  /* 🚀 A CORREÇÃO: 'none' garante que ele respeite as maiúsculas originais da sua base! */
+  text-transform: none !important; 
+  padding-right: 24px !important; 
+}
+
+/* Coluna da direita (Valor Real) */
+.kepler-gl .map-popover .row__value {
+  color: #ffffff !important; 
+  font-weight: bold !important;
+}

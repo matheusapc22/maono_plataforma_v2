@@ -28,3 +28,4 @@ test-results
 # test temporary outputs
 coverage
 playwright/auth.json
+.env 

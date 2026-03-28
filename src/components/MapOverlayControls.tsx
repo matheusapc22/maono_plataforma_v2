@@ -64,6 +64,8 @@ export function MapOverlayControls() {
   const [showTooltipsPanel, setShowTooltipsPanel] = useState(false);
   const [activeTooltipDatasetId, setActiveTooltipDatasetId] = useState<string | null>(null);
   const [tooltipDraftFields, setTooltipDraftFields] = useState<any[]>([]);
+  // 🚀 NOVO: Guarda o backup do estado inicial para fazer o Rollback (Descartar)
+  const originalFieldsBackup = useRef<any[]>([]);
 
   // --- Local States: Marcador & Isócronas ---
   const [markerState, setMarkerState] = useState<'idle' | 'placing' | 'placed'>('idle');
@@ -91,7 +93,6 @@ export function MapOverlayControls() {
     if (!mapState?.width || !mapState?.height) return null;
     const rect = getMapRect();
     
-    // Normalização de Escala (Previne erros em telas Retina/DPI)
     const scaleX = mapState.width / (rect.width || mapState.width);
     const scaleY = mapState.height / (rect.height || mapState.height);
     const mapX = (clientX - rect.left) * scaleX;
@@ -102,7 +103,6 @@ export function MapOverlayControls() {
     if (!unprojected) return null;
 
     let [lng, lat] = unprojected;
-    // Corrige clique pós linha do Equador (Wrap Global)
     while (lng > 180) lng -= 360;
     while (lng < -180) lng += 360;
 
@@ -300,7 +300,7 @@ export function MapOverlayControls() {
   };
 
   // =========================================================================
-  // 🚀 LÓGICA DE NAVEGAÇÃO DE TOOLTIPS
+  // 🚀 LÓGICA DE NAVEGAÇÃO DE TOOLTIPS (LIVE PREVIEW COM ROLLBACK)
   // =========================================================================
   const tooltipConf = interactionConfig?.tooltip?.config || (interactionConfig?.tooltip?.get && interactionConfig.tooltip.get('config'));
   const fieldsToShow = tooltipConf?.fieldsToShow || (tooltipConf?.get && tooltipConf.get('fieldsToShow')) || {};
@@ -308,24 +308,63 @@ export function MapOverlayControls() {
   const handleOpenDatasetTooltips = (datasetId: string) => {
     const datasetFields = fieldsToShow[datasetId] || (fieldsToShow.get && fieldsToShow.get(datasetId));
     const activeFields = getPlainFields(datasetFields);
+    
+    // 📸 SALVA O BACKUP PARA O ROLLBACK!
+    originalFieldsBackup.current = [...activeFields]; 
+    
     setTooltipDraftFields(activeFields);
     setActiveTooltipDatasetId(datasetId);
   };
 
   const handleToggleDraftField = (fieldName: string) => {
+    if (!activeTooltipDatasetId) return;
+    
     const isShown = tooltipDraftFields.some((f) => f.name === fieldName);
-    if (isShown) setTooltipDraftFields(prev => prev.filter((f) => f.name !== fieldName));
-    else setTooltipDraftFields(prev => [...prev, { name: fieldName, format: null }]);
+    let newFields;
+    
+    if (isShown) {
+      newFields = tooltipDraftFields.filter((f) => f.name !== fieldName);
+    } else {
+      newFields = [...tooltipDraftFields, { name: fieldName, format: null }];
+    }
+    
+    setTooltipDraftFields(newFields); // Atualiza o estado da UI
+
+    // 🚀 LIVE PREVIEW: Injeta direto no Kepler para ver instantaneamente!
+    dispatch(wrapTo(KEPLER_ID, interactionConfigChange({ 
+      id: 'tooltip', 
+      enabled: true, 
+      config: { 
+        ...tooltipConf, 
+        fieldsToShow: { 
+          ...fieldsToShow, 
+          [activeTooltipDatasetId]: newFields 
+        } 
+      } 
+    } as any)));
   };
 
   const handleSaveTooltips = () => {
-    if (!activeTooltipDatasetId) return;
-    dispatch(wrapTo(KEPLER_ID, addDataToMap({} as any))); 
-    dispatch(wrapTo(KEPLER_ID, interactionConfigChange({ id: 'tooltip', enabled: true, config: { ...tooltipConf, fieldsToShow: { ...fieldsToShow, [activeTooltipDatasetId]: tooltipDraftFields } } } as any)));
+    // 🎉 O mapa já está atualizado pelo Live Preview! Só precisamos fechar o painel.
     setActiveTooltipDatasetId(null);
+    setTooltipDraftFields([]);
   };
 
   const handleDiscardTooltips = () => {
+    if (activeTooltipDatasetId) {
+      // ⏪ ROLLBACK: Injeta o backup de volta no Kepler para desfazer o Preview
+      dispatch(wrapTo(KEPLER_ID, interactionConfigChange({ 
+        id: 'tooltip', 
+        enabled: true, 
+        config: { 
+          ...tooltipConf, 
+          fieldsToShow: { 
+            ...fieldsToShow, 
+            [activeTooltipDatasetId]: originalFieldsBackup.current 
+          } 
+        } 
+      } as any)));
+    }
     setActiveTooltipDatasetId(null);
     setTooltipDraftFields([]);
   };
@@ -403,14 +442,12 @@ export function MapOverlayControls() {
         <div 
           className="fixed inset-0 z-[999997]"
           style={{
-             // Cursor nativo usando a agulha recalibrada no hotspot exato (16 32)
              cursor: `url('data:image/svg+xml;utf8,<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 24c0 0 9-7.4 9-14.5C21 4.25 16.97 0 12 0 7.03 0 3 4.25 3 9.5 3 16.6 12 24 12 24z" fill="%23C5A059" stroke="%230a0f18" stroke-width="1.5"/><circle cx="12" cy="9" r="3" fill="%230a0f18" stroke="none"/></svg>') 16 32, crosshair`
           }}
           onMouseDown={(e) => { clickStart.current = { x: e.clientX, y: e.clientY }; }}
           onMouseUp={(e) => {
              if (Math.abs(e.clientX - clickStart.current.x) > 4 || Math.abs(e.clientY - clickStart.current.y) > 4) return;
              
-             // Usa o tradutor calibrado para ignorar a Sidebar
              const unprojected = unprojectFromScreen(e.clientX, e.clientY);
              if (unprojected) {
                  setMarkerOrigin({ lat: unprojected.lat, lng: unprojected.lng });

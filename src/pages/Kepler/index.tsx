@@ -2,7 +2,7 @@
 // Copyright contributors to the kepler.gl project
 // @ts-nocheck
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import AutoSizer from "react-virtualized/dist/commonjs/AutoSizer";
 import styled, { ThemeProvider, StyleSheetManager } from "styled-components";
 import Window from "global/window";
@@ -12,6 +12,10 @@ import cloneDeep from "lodash/cloneDeep";
 import isEqual from "lodash/isEqual";
 import isPropValid from "@emotion/is-prop-valid";
 import { WebMercatorViewport } from "@deck.gl/core";
+
+// 🚀 A MÁGICA ENTRA AQUI: Importamos a camada MVT do Deck.gl
+import { MVTLayer } from "@deck.gl/geo-layers";
+
 import { ScreenshotWrapper } from "@openassistant/ui";
 import {
   setStartScreenCapture,
@@ -19,12 +23,34 @@ import {
   AiAssistantPanel,
   setMapBoundary,
 } from "@kepler.gl/ai-assistant";
-import { panelBorderColor, theme } from "@kepler.gl/styles";
+
 import { getApplicationConfig } from "@kepler.gl/utils";
 import { SqlPanel } from "@kepler.gl/duckdb";
 import "./kepler-overrides.css";
 import Banner from "./components/banner";
 import Announcement, { FormLink } from "./components/announcement";
+
+import { panelBorderColor, theme as keplerDefaultTheme } from "@kepler.gl/styles";
+
+// 🚀 A RAIZ DO PROBLEMA RESOLVIDA: O TEMA MAÕNO
+// Sobrescrevemos todas as variáveis que o Kepler usa para pintar coisas de "Ativo/Azul"
+const maonoTheme = {
+  ...keplerDefaultTheme,
+  activeColor: '#C5A059',           // O Dourado principal
+  activeColorHover: '#E2C275',      // O Dourado claro no hover
+  primaryBtnBgd: '#C5A059',
+  primaryBtnBgdHover: '#E2C275',
+  primaryBtnActBgd: '#8A6D3B',
+  textColorHl: '#C5A059',           // Texto destacado
+  panelToggleBgd: '#C5A059',        // Fundo da alça de arrastar!
+};
+
+// 🚀 IMPORTS DO NÚCLEO DO KEPLER
+import {
+  injectComponents
+} from "@kepler.gl/components";
+
+// 🚀 IMPORTS DAS SUAS FÁBRICAS LOCAIS
 import { replaceLoadDataModal } from "./factories/load-data-modal";
 import { replaceMapControl } from "./factories/map-control";
 import { replacePanelHeader } from "./factories/panel-header";
@@ -34,6 +60,8 @@ import {
   CLOUD_PROVIDERS_CONFIGURATION,
   DEFAULT_FEATURE_FLAGS,
 } from "./constants/default-settings";
+
+// 🚀 IMPORTAÇÃO DA NOSSA LOCALIZAÇÃO
 import { messages } from "./constants/localization";
 
 import {
@@ -83,17 +111,11 @@ import {
   processRowObject,
 } from "@kepler.gl/processors";
 
-import { injectComponents } from "@kepler.gl/components";
 import { useParams, useSearchParams } from "react-router";
 
-/**
- * ✅ ID ÚNICO DO KEPLER
- */
 const KEPLER_ID = "map";
 
-/**
- * ✅ KeplerGl INJETADO (customizado)
- */
+// ✅ KeplerGl INJETADO (customizado apenas com suas fábricas locais)
 const KeplerGl = injectComponents([
   replaceLoadDataModal(),
   replaceMapControl(),
@@ -101,7 +123,6 @@ const KeplerGl = injectComponents([
   replaceDatasetSection(),
 ]);
 
-// This implements the default behavior from styled-components v5
 function shouldForwardProp(propName, target) {
   if (typeof target === "string") {
     return isPropValid(propName);
@@ -112,18 +133,9 @@ function shouldForwardProp(propName, target) {
 const BannerHeight = 48;
 const BannerKey = `banner-${FormLink}`;
 
-/**
- * ✅ CRÍTICO:
- * getState precisa retornar o slice keplerGl INTEIRO, não keplerGl[KEPLER_ID].
- * O Kepler seleciona pelo id internamente.
- *
- * Se não existir no store ainda, retorna um objeto com o shape mínimo esperado.
- */
 const keplerGlGetState = (state) => {
   const keplerGlState = state?.demo?.keplerGl;
   if (keplerGlState && typeof keplerGlState === "object") return keplerGlState;
-
-  // fallback mínimo (evita crash ao acessar visState)
   return {
     [KEPLER_ID]: { visState: {}, mapState: {}, uiState: {} },
   };
@@ -212,12 +224,36 @@ const App = (props) => {
       state?.demo?.keplerGl?.[KEPLER_ID]?.uiState?.mapControls?.aiAssistant?.active
   );
 
-  // 1) Ler qual aba está ativa no momento
   const activeSidePanel = useSelector(
     (state) => state?.demo?.keplerGl?.[KEPLER_ID]?.uiState?.activeSidePanel
   );
 
-  // 2) Corrigir se sair da whitelist
+  // 🚀 O NOSSO SENSOR (ESCUTA O DATASET FANTASMA)
+  // Esse hook verifica se o botão do Catálogo foi clicado e o dataset foi injetado.
+  const showMvtLayer = useSelector(
+    (state: any) => !!state?.demo?.keplerGl?.[KEPLER_ID]?.visState?.datasets?.['empresas_mvt_data']
+  );
+
+  // 🚀 A CONSTRUÇÃO DA CAMADA DECK.GL
+  const customDeckLayers = useMemo(() => {
+    // Se o usuário não ativou a base MVT, não renderizamos a camada
+    if (!showMvtLayer && !(window as any).__MAONO_SHOW_MVT__) return [];
+
+    return [
+      new MVTLayer({
+        id: 'maono-r2-mvt-layer',
+        // O link direto para as fatias pré-renderizadas do Cloudflare
+        data: 'https://pub-1fec65e3cdea470b8229d27adfcca2d7.r2.dev/previa_corpal_empresas_otimizada_v4/{z}/{x}/{y}.pbf',
+        getFillColor: [197, 160, 89, 140], // Dourado Maõno
+        getLineColor: [197, 160, 89, 255], 
+        lineWidthMinPixels: 1,
+        pickable: true,
+        autoHighlight: true,
+        highlightColor: [226, 194, 117, 200]
+      })
+    ];
+  }, [showMvtLayer]);
+
   useEffect(() => {
     if (!activeSidePanel) return;
 
@@ -277,12 +313,10 @@ const App = (props) => {
 
     _loadSampleData();
     dispatch(toggleModal(null));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onViewStateChange = useCallback(
     (viewState) => {
-      // 🚀 TÁTICA DO MUTE: Se o nosso Voo estiver ativado, o Redux fica cego.
       if ((window as any).__maonoIsFlying) {
         console.log("🤫 [MUTE TACTIC] Redux ignorando ViewState para evitar o AutoSizer Crash.");
         return;
@@ -504,18 +538,6 @@ const App = (props) => {
   }, [dispatch]);
 
   const _loadSampleData = useCallback(() => {
-    // _loadPointData();
-    // _loadGeojsonData();
-    // _loadTripGeoJson();
-    // _loadIconData();
-    // _loadH3HexagonData();
-    // _loadS2Data();
-    // _loadScenegraphLayer();
-    // _loadGpsData();
-    // _loadRowData();
-    // _loadVectorTileData();
-    // _loadSyncedFilterWTripLayer();
-    // _replaceSyncedFilterWTripLayer();
   }, [
     _loadPointData,
     _loadGeojsonData,
@@ -533,7 +555,8 @@ const App = (props) => {
 
   return (
     <StyleSheetManager shouldForwardProp={shouldForwardProp}>
-      <ThemeProvider theme={theme}>
+      {/* Injetamos o nosso Tema Dourado na raiz da árvore */}
+      <ThemeProvider theme={maonoTheme}>
         <GlobalStyle>
           <ScreenshotWrapper
             startScreenCapture={props.demo.aiAssistant.screenshotToAsk.startScreenCapture}
@@ -565,7 +588,9 @@ const App = (props) => {
                             featureFlags={DEFAULT_FEATURE_FLAGS}
                             onViewStateChange={onViewStateChange}
                             
-                            // 🚀 FRENTE C: CAPTURANDO A REF NATIVA DO MAPBOX
+                            
+                            deckGlProps={{ layers: customDeckLayers }}
+
                             getMapboxRef={(mapbox: any, index: number) => {
                               if (index === 0 && mapbox) {
                                 (window as any).__maonoMapRef = mapbox.getMap();
