@@ -364,3 +364,38 @@ body {
   color: #ffffff !important; 
   font-weight: bold !important;
 }
+
+/* ========================================================
+   🏆 MAÕNO WHITE-LABEL: REMOÇÃO DE MARCAS D'ÁGUA
+   ======================================================== */
+
+/* 1. Oculta a logo do Kepler.gl (Canto Inferior) */
+.kepler-gl .bottom-widget--logo,
+.kepler-gl .kepler-gl__logo {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* 2. Oculta a caixa inteira do Widget inferior (garantia extra) */
+.kepler-gl .bottom-widget {
+  display: none !important;
+}
+
+/* 3. Oculta a marca d'água e direitos autorais (Mapbox, MapLibre e CARTO) */
+.mapboxgl-ctrl-logo,
+.mapboxgl-ctrl-attrib,
+.mapboxgl-ctrl-bottom-left,
+.mapboxgl-ctrl-bottom-right,
+.maplibregl-ctrl-logo,
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-bottom-left,
+.maplibregl-ctrl-bottom-right,
+.kepler-gl .attrition-logo,
+.kepler-gl .map-control-bottom-right {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}

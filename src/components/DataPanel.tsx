@@ -1,43 +1,55 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { selectDatasets, KEPLER_ID } from '../pages/Kepler/keplerBridge';
 import { removeDataset, wrapTo, addDataToMap } from '@kepler.gl/actions';
-import { processCsvData } from '@kepler.gl/processors'; // 🚀 IMPORT CRUCIAL AQUI
+import { processCsvData } from '@kepler.gl/processors'; 
 import { 
   Database, UploadCloud, Search, Filter, Save, Layers, 
-  ChevronRight, Plus, X, CheckCircle2, CloudLightning
+  ChevronRight, Plus, X, CheckCircle2, CloudLightning, Loader2
 } from 'lucide-react';
 
-// ==========================================
-// 🗄️ CATÁLOGO MAÕNO (Fase MVT / Serverless)
-// ==========================================
-const MOCK_DATASETS = [
-  {
-    id: 'ds_tiles_teste', 
-    name: 'Tiles Teste (Cloudflare R2)', 
-    type: 'SERVERLESS MVT', 
-    rows: 'Transmissão Contínua',
-    description: 'Prova de Conceito de Arquitetura Serverless. Fatias vetorizadas sendo transmitidas via HTTP Range Requests diretamente para a GPU.',
-    columns: ['* Todas as propriedades encapsuladas no Protobuf']
-  }
-];
+// 🚀 IMPORTAMOS A NOSSA API PARA COMUNICAÇÃO COM O BACKEND
+import { maonoApi } from '../services/api';
 
 export function DataPanel({ onOpenImporter }: { onOpenImporter: () => void }) {
   const dispatch = useDispatch();
   
-  // 🚀 LÓGICA DE ESTADO DO KEPLER
+  // ============================================================================
+  // ESTADOS DO KEPLER E NAVEGAÇÃO
+  // ============================================================================
   const datasetsRaw = useSelector((state: any) => selectDatasets(state, KEPLER_ID));
   const [viewingDataset, setViewingDataset] = useState<any | null>(null);
   const [editingDataId, setEditingDataId] = useState<string | null>(null);
   const [editingDataName, setEditingDataName] = useState<string>('');
   const [forceRenderCounter, setForceRenderCounter] = useState(0); 
 
-  // 🚀 LÓGICA DE NAVEGAÇÃO
-  const [activeTab, setActiveTab] = useState<'KEPLER' | 'CATALOG' | 'BUILDER'>('CATALOG'); // Já começa no catálogo para facilitar o teste
+  const [activeTab, setActiveTab] = useState<'KEPLER' | 'CATALOG' | 'BUILDER'>('CATALOG');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCatalogDataset, setSelectedCatalogDataset] = useState<any | null>(null);
-  const [queryFilters, setQueryFilters] = useState<{ col: string, op: string, val: string }[]>([]);
+  
+  // 🚀 NOVOS ESTADOS PARA O CATÁLOGO DINÂMICO
+  const [catalogDatasets, setCatalogDatasets] = useState<any[]>([]);
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
+
+  // ============================================================================
+  // BUSCANDO OS DADOS DO SERVIDOR (BACKEND D1)
+  // ============================================================================
+  useEffect(() => {
+    const fetchCatalog = async () => {
+      setIsLoadingCatalog(true);
+      try {
+        // Puxa os dados da nossa API (http://localhost:4000/catalog)
+        const data = await maonoApi.getCatalog();
+        setCatalogDatasets(data.datasets || []);
+      } catch (error) {
+        console.error("Erro ao carregar o catálogo da API:", error);
+      } finally {
+        setIsLoadingCatalog(false);
+      }
+    };
+
+    fetchCatalog();
+  }, []); // O array vazio [] garante que isso rode apenas 1 vez quando o painel abre
 
   // ============================================================================
   // MEMÓRIA E RENDERIZAÇÃO DE DATASETS ATIVOS
@@ -63,7 +75,6 @@ export function DataPanel({ onOpenImporter }: { onOpenImporter: () => void }) {
 
   const DATASET_ACCENT_COLORS = ['#C5A059', '#E2D7C1', '#9CA3AF', '#CD9575', '#64748B'];
   const getDatasetAccentColor = (dataId: string) => {
-    // Se for o nosso MVT da nuvem, força a cor principal
     if(dataId === 'empresas_mvt_data') return '#C5A059';
     const index = availableDatasets.findIndex(d => d.id === dataId);
     return DATASET_ACCENT_COLORS[Math.max(0, index) % DATASET_ACCENT_COLORS.length];
@@ -72,7 +83,6 @@ export function DataPanel({ onOpenImporter }: { onOpenImporter: () => void }) {
   const handleDeleteDataset = (datasetId: string) => { 
     if(window.confirm("Atenção: Excluir esta base de dados apagará todas as camadas vinculadas a ela. Deseja continuar?")) {
       dispatch(wrapTo(KEPLER_ID, removeDataset(datasetId))); 
-      // Desliga o MVT se ele for deletado
       if (datasetId === 'empresas_mvt_data') {
         (window as any).__MAONO_SHOW_MVT__ = false;
       }
@@ -101,33 +111,28 @@ export function DataPanel({ onOpenImporter }: { onOpenImporter: () => void }) {
   };
 
   // ============================================================================
-  // LÓGICA DE INJEÇÃO DO CLOUDFLARE R2
+  // LÓGICA DO CATÁLOGO (AGORA DINÂMICA)
   // ============================================================================
-  const filteredCatalog = MOCK_DATASETS.filter(ds => ds.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredCatalog = catalogDatasets.filter(ds => ds.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const handleUsarBaseCatalog = (dataset: any) => {
     if (dataset.id === 'ds_tiles_teste') {
       console.log("🚀 Ativando Engine MVT...");
       
-      // 1. Sinalizador Global para o arquivo index.tsx ativar a camada no Deck.gl
       (window as any).__MAONO_SHOW_MVT__ = true;
       
       try {
-        // 2. Cria um CSV fantasma com os extremos do Brasil (Norte e Sul)
-        // Isso força a câmera a subir e mostrar o país inteiro, revelando onde o MVT existe.
         const dummyCsv = 'lat,lng\n5.2743,-60.2116\n-33.7511,-53.3691';
         const processedData = processCsvData(dummyCsv);
 
-        // 3. Injeta o Dataset Fantasma validado rigorosamente pelo Kepler
         dispatch(wrapTo(KEPLER_ID, addDataToMap({
           datasets: {
             info: { 
-              id: 'empresas_mvt_data', // Atenção: NÃO mude este ID, o index.tsx depende dele!
-              label: 'Tiles de Teste (Nuvem)' 
+              id: 'empresas_mvt_data', 
+              label: dataset.name 
             },
             data: processedData
           },
-          // 🚀 autoCreateLayers: false ADICIONADO AQUI!
           options: { centerMap: true, keepExistingConfig: true, autoCreateLayers: false },
           config: { visState: { layers: [] } }
         })));
@@ -135,14 +140,9 @@ export function DataPanel({ onOpenImporter }: { onOpenImporter: () => void }) {
         console.error("Erro na injeção Redux:", error);
       }
       
-      // 4. Muda a aba para o usuário ver o arquivo ativo
       setActiveTab('KEPLER');
       return;
     }
-  };
-
-  const handleSaveProject = () => {
-    alert("Função restrita na fase MVT Alpha.");
   };
 
   // ============================================================================
@@ -162,9 +162,7 @@ export function DataPanel({ onOpenImporter }: { onOpenImporter: () => void }) {
 
       <div className="flex-1 overflow-y-auto maono-scroll relative z-10">
         
-        {/* ======================================= */}
-        {/* ABA 1: GERENCIADOR DE CAMADAS NO MAPA   */}
-        {/* ======================================= */}
+        {/* ABA 1: GERENCIADOR DE CAMADAS NO MAPA */}
         {activeTab === 'KEPLER' && (
           <div className="p-6 flex flex-col gap-5">
             <button onClick={onOpenImporter} className="w-full py-4 mb-2 bg-gradient-to-b from-[#172233] to-[#0d141f] border border-[#C5A059]/30 shadow-[0_5px_15px_rgba(0,0,0,0.4)] hover:border-[#C5A059] rounded-xl text-[#C5A059] font-bold text-xs tracking-widest uppercase transition-all flex items-center justify-center gap-2 group">
@@ -220,9 +218,7 @@ export function DataPanel({ onOpenImporter }: { onOpenImporter: () => void }) {
           </div>
         )}
 
-        {/* ======================================= */}
-        {/* ABA 2: CATÁLOGO DA PLATAFORMA           */}
-        {/* ======================================= */}
+        {/* ABA 2: CATÁLOGO DA PLATAFORMA (AGORA PUXA DA API) */}
         {activeTab === 'CATALOG' && (
           <div className="p-6">
             <div className="relative mb-6">
@@ -230,28 +226,39 @@ export function DataPanel({ onOpenImporter }: { onOpenImporter: () => void }) {
               <input type="text" placeholder="Buscar base curada..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-[#131c2a] border border-[#1f2b3e] rounded-xl pl-9 pr-4 py-3 text-sm text-white focus:outline-none focus:border-[#C5A059] transition-colors" />
             </div>
             
-            <div className="space-y-4">
-              {filteredCatalog.map(ds => (
-                <div key={ds.id} className="relative p-5 bg-gradient-to-br from-[#0a0f18] to-[#05080c] rounded-xl border border-[#C5A059]/40 shadow-[0_0_20px_rgba(197,160,89,0.1)] hover:border-[#C5A059] transition-all group overflow-hidden">
-                  
-                  {/* Fundo iluminado sutil */}
-                  <div className="absolute -right-10 -top-10 w-32 h-32 bg-[#C5A059]/10 rounded-full blur-3xl group-hover:bg-[#C5A059]/20 transition-all pointer-events-none"></div>
+            {/* Lógica de Carregamento Bonita */}
+            {isLoadingCatalog ? (
+              <div className="flex flex-col items-center justify-center py-10 text-[#C5A059]">
+                <Loader2 className="w-8 h-8 animate-spin mb-4" />
+                <span className="text-sm font-mono tracking-widest">SINCRONIZANDO NUVEM...</span>
+              </div>
+            ) : filteredCatalog.length === 0 ? (
+              <div className="p-8 text-center border-2 border-dashed border-[#1f2b3e] rounded-xl bg-[#0a0f18]/50">
+                <span className="text-xs text-[#64748b]">Nenhum catálogo encontrado.</span>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredCatalog.map(ds => (
+                  <div key={ds.id} className="relative p-5 bg-gradient-to-br from-[#0a0f18] to-[#05080c] rounded-xl border border-[#C5A059]/40 shadow-[0_0_20px_rgba(197,160,89,0.1)] hover:border-[#C5A059] transition-all group overflow-hidden">
+                    
+                    <div className="absolute -right-10 -top-10 w-32 h-32 bg-[#C5A059]/10 rounded-full blur-3xl group-hover:bg-[#C5A059]/20 transition-all pointer-events-none"></div>
 
-                  <div className="flex justify-between items-start mb-2 relative z-10">
-                    <h3 className="font-bold text-sm text-[#C5A059] flex items-center gap-2">
-                      <CloudLightning className="w-4 h-4" /> {ds.name}
-                    </h3>
-                    <span className="bg-[#C5A059]/10 border border-[#C5A059]/20 text-[#C5A059] px-2 py-1 rounded text-[9px] font-mono tracking-wider">{ds.rows}</span>
+                    <div className="flex justify-between items-start mb-2 relative z-10">
+                      <h3 className="font-bold text-sm text-[#C5A059] flex items-center gap-2">
+                        <CloudLightning className="w-4 h-4" /> {ds.name}
+                      </h3>
+                      <span className="bg-[#C5A059]/10 border border-[#C5A059]/20 text-[#C5A059] px-2 py-1 rounded text-[9px] font-mono tracking-wider">{ds.rows}</span>
+                    </div>
+                    <p className="text-xs text-[#8c9fba] leading-relaxed mb-4 relative z-10">{ds.description}</p>
+                    
+                    <button onClick={() => handleUsarBaseCatalog(ds)} className="w-full py-2.5 bg-[#C5A059] hover:bg-[#E2C275] text-[#0a0f18] text-[10px] font-extrabold uppercase tracking-widest rounded-lg flex items-center justify-center gap-1 transition-all shadow-[0_0_15px_rgba(197,160,89,0.3)] hover:shadow-[0_0_20px_rgba(197,160,89,0.5)]">
+                      USAR BASE SERVERLESS <ChevronRight className="w-3 h-3" />
+                    </button>
+                    
                   </div>
-                  <p className="text-xs text-[#8c9fba] leading-relaxed mb-4 relative z-10">{ds.description}</p>
-                  
-                  <button onClick={() => handleUsarBaseCatalog(ds)} className="w-full py-2.5 bg-[#C5A059] hover:bg-[#E2C275] text-[#0a0f18] text-[10px] font-extrabold uppercase tracking-widest rounded-lg flex items-center justify-center gap-1 transition-all shadow-[0_0_15px_rgba(197,160,89,0.3)] hover:shadow-[0_0_20px_rgba(197,160,89,0.5)]">
-                    USAR BASE SERVERLESS <ChevronRight className="w-3 h-3" />
-                  </button>
-                  
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

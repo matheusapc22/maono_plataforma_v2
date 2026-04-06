@@ -2,7 +2,7 @@ import { Router } from "itty-router";
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 
-// Wrappers async para evitar bloquear o runtime (substitui hashSync/compareSync)
+// Wrappers async para evitar bloquear o runtime
 const bcryptHash = (password, rounds = 10) =>
   new Promise((resolve, reject) => {
     bcrypt.hash(password, rounds, (err, hash) => {
@@ -113,6 +113,9 @@ const filterKeplerJsonByCity = (keplerJson, city, fieldName) => {
   return { ...keplerJson, datasets };
 };
 
+// ==========================================
+// 🌐 ROTAS PÚBLICAS E CONFIGURAÇÕES
+// ==========================================
 router.options("*", (request, env) => {
   const { corsOrigin } = getEnv(env);
   return new Response(null, {
@@ -123,11 +126,33 @@ router.options("*", (request, env) => {
 
 router.get("/health", (request, env) => {
   const { corsOrigin } = getEnv(env);
-  return new Response(JSON.stringify({ status: "ok" }), {
+  return new Response(JSON.stringify({ status: "ok", message: "Maõno API Online" }), {
     headers: jsonHeaders(corsOrigin),
   });
 });
 
+router.get("/catalog", (request, env) => {
+  const { corsOrigin } = getEnv(env);
+  const catalogDatasets = [
+    {
+      id: 'ds_tiles_teste', 
+      name: 'Tiles Teste (Cloudflare R2)', 
+      type: 'SERVERLESS MVT', 
+      rows: 'Transmissão Contínua',
+      description: 'Prova de Conceito de Arquitetura Serverless. Fatias vetorizadas transmitidas diretamente para a GPU.',
+      columns: ['* Todas as propriedades encapsuladas no Protobuf']
+    }
+  ];
+
+  return new Response(JSON.stringify({ datasets: catalogDatasets }), {
+    status: 200,
+    headers: jsonHeaders(corsOrigin),
+  });
+});
+
+// ==========================================
+// 🔐 AUTENTICAÇÃO E SESSÃO
+// ==========================================
 router.post("/auth/signup", async (request, env) => {
   const { corsOrigin } = getEnv(env);
   const body = await readBody(request);
@@ -166,7 +191,7 @@ router.post("/auth/signup", async (request, env) => {
     .run();
 
   const token = await createToken(env, user);
-  return new Response(JSON.stringify({ token }), {
+  return new Response(JSON.stringify({ token, message: "Usuário criado com sucesso!" }), {
     status: 201,
     headers: jsonHeaders(corsOrigin),
   });
@@ -204,6 +229,39 @@ router.post("/auth/login", async (request, env) => {
   });
 });
 
+// NOVA ROTA: Validação de Sessão
+router.get("/auth/me", async (request, env) => {
+  const { corsOrigin } = getEnv(env);
+  const auth = await authMiddleware(request, env);
+
+  if (auth.error) {
+    return new Response(JSON.stringify({ error: auth.error }), {
+      status: 401,
+      headers: jsonHeaders(corsOrigin),
+    });
+  }
+
+  const user = await env.DB.prepare(
+    "SELECT id, email, created_at FROM users WHERE id = ?"
+  )
+    .bind(auth.user.id)
+    .first();
+
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Usuário não encontrado." }), {
+      status: 404,
+      headers: jsonHeaders(corsOrigin),
+    });
+  }
+
+  return new Response(JSON.stringify({ user }), {
+    headers: jsonHeaders(corsOrigin),
+  });
+});
+
+// ==========================================
+// 🗺️ GESTÃO DE PROJETOS (KEPLER MAPS)
+// ==========================================
 router.get("/projects", async (request, env) => {
   const { corsOrigin } = getEnv(env);
   const auth = await authMiddleware(request, env);
@@ -425,13 +483,10 @@ export default {
     }
 
     try {
-      // ✅ itty-router v5: use router.fetch (não router.handle)
       const res = await router.fetch(request, env, ctx);
 
-      // Segurança extra: nunca deixe o fetch "sem resposta"
       if (res instanceof Response) return res;
 
-      // fallback caso algum handler retorne algo não-Response
       return new Response(JSON.stringify(res ?? {}), {
         status: 200,
         headers: jsonHeaders(corsOrigin),

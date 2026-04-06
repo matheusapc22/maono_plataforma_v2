@@ -2,9 +2,14 @@
 // Copyright contributors to the kepler.gl project
 // @ts-nocheck
 
-import { push } from "react-router-redux";
-import { fetch } from "global";
+// 🚀 AQUI ESTÁ A CORREÇÃO: Removemos o "react-router-redux" obsoleto 
+// e criamos uma função nativa compatível para alterar a rota sem recarregar a página
+const push = (path) => (dispatch) => {
+  window.history.pushState({}, '', path);
+  window.dispatchEvent(new Event('popstate'));
+};
 
+import { fetch } from "global";
 import { loadFiles, toggleModal } from "@kepler.gl/actions";
 import { parseUri } from "@kepler.gl/common-utils";
 import { load } from "@loaders.gl/core";
@@ -194,7 +199,7 @@ export function loadSample(options, pushRoute = true) {
       dispatch(
         push(
           `/demo/${options.id}${
-            routing.locationBeforeTransitions?.search ?? ""
+            routing?.locationBeforeTransitions?.search ?? ""
           }`
         )
       );
