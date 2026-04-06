@@ -1876,10 +1876,10 @@ var require_bcrypt = __commonJS({
   }
 });
 
-// .wrangler/tmp/bundle-hbPyoB/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-FdlSlk/middleware-loader.entry.ts
 init_modules_watch_stub();
 
-// .wrangler/tmp/bundle-hbPyoB/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-FdlSlk/middleware-insertion-facade.js
 init_modules_watch_stub();
 
 // src/index.js
@@ -3376,27 +3376,17 @@ var SignJWT = class {
 };
 
 // src/index.js
-var bcryptHash = /* @__PURE__ */ __name((password, rounds = 10) => new Promise((resolve, reject) => {
-  import_bcryptjs.default.hash(password, rounds, (err, hash) => {
-    if (err) reject(err);
-    else resolve(hash);
-  });
-}), "bcryptHash");
-var bcryptCompare = /* @__PURE__ */ __name((password, hash) => new Promise((resolve, reject) => {
-  import_bcryptjs.default.compare(password, hash, (err, same) => {
-    if (err) reject(err);
-    else resolve(same);
-  });
-}), "bcryptCompare");
+var bcryptHash = /* @__PURE__ */ __name((password, rounds = 10) => new Promise((res, rej) => import_bcryptjs.default.hash(password, rounds, (err, hash) => err ? rej(err) : res(hash))), "bcryptHash");
+var bcryptCompare = /* @__PURE__ */ __name((password, hash) => new Promise((res, rej) => import_bcryptjs.default.compare(password, hash, (err, same) => err ? rej(err) : res(same))), "bcryptCompare");
 var router = t();
+var now = /* @__PURE__ */ __name(() => (/* @__PURE__ */ new Date()).toISOString(), "now");
+var encoder2 = new TextEncoder();
 var jsonHeaders = /* @__PURE__ */ __name((origin) => ({
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": origin || "*",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization"
 }), "jsonHeaders");
-var now = /* @__PURE__ */ __name(() => (/* @__PURE__ */ new Date()).toISOString(), "now");
-var encoder2 = new TextEncoder();
 var getEnv = /* @__PURE__ */ __name((env = {}) => ({
   jwtSecret: env.JWT_SECRET || "maono_dev_secret",
   tokenExpiresIn: env.JWT_EXPIRES_IN || "8h",
@@ -3404,361 +3394,97 @@ var getEnv = /* @__PURE__ */ __name((env = {}) => ({
 }), "getEnv");
 var createToken = /* @__PURE__ */ __name(async (env, user) => {
   const { jwtSecret, tokenExpiresIn } = getEnv(env);
-  return new SignJWT({ email: user.email }).setSubject(user.id).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(tokenExpiresIn).sign(encoder2.encode(jwtSecret));
+  return new SignJWT({ email: user.email, role: user.role, org: user.organization_id }).setSubject(user.id).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(tokenExpiresIn).sign(encoder2.encode(jwtSecret));
 }, "createToken");
 var authMiddleware = /* @__PURE__ */ __name(async (request, env) => {
   const { jwtSecret } = getEnv(env);
-  const header = request.headers.get("Authorization") || "";
-  const token = header.replace("Bearer ", "");
-  if (!token) {
-    return { error: "Token ausente." };
-  }
+  const token = (request.headers.get("Authorization") || "").replace("Bearer ", "");
+  if (!token) return { error: "Token ausente." };
   try {
     const { payload } = await jwtVerify(token, encoder2.encode(jwtSecret));
-    return { user: { id: payload.sub, email: payload.email } };
+    return { user: { id: payload.sub, email: payload.email, role: payload.role, org: payload.org } };
   } catch {
     return { error: "Token inv\xE1lido." };
   }
 }, "authMiddleware");
 var readBody = /* @__PURE__ */ __name(async (request) => {
-  const contentType = request.headers.get("Content-Type") || "";
-  if (!contentType.includes("application/json")) {
-    return {};
-  }
+  if (!(request.headers.get("Content-Type") || "").includes("application/json")) return {};
   return request.json();
 }, "readBody");
-var filterKeplerJsonByCity = /* @__PURE__ */ __name((keplerJson, city, fieldName) => {
-  if (!keplerJson?.datasets || !Array.isArray(keplerJson.datasets)) {
-    return keplerJson;
-  }
-  const normalizedCity = city.trim().toLowerCase();
-  const normalizedField = fieldName.trim().toLowerCase();
-  let matched = false;
-  const datasets = keplerJson.datasets.map((dataset) => {
-    const fields = dataset?.data?.fields || [];
-    const rows = dataset?.data?.rows || [];
-    const fieldIndex = fields.findIndex(
-      (field) => field?.name?.toLowerCase() === normalizedField
-    );
-    if (fieldIndex === -1) return dataset;
-    matched = true;
-    const filteredRows = rows.filter((row) => {
-      const value = row[fieldIndex];
-      if (value === void 0 || value === null) return false;
-      return String(value).toLowerCase() === normalizedCity;
-    });
-    return {
-      ...dataset,
-      data: {
-        ...dataset.data,
-        rows: filteredRows
-      }
-    };
-  });
-  if (!matched) {
-    throw new Error("Campo de cidade n\xE3o encontrado nos datasets.");
-  }
-  return { ...keplerJson, datasets };
-}, "filterKeplerJsonByCity");
-router.options("*", (request, env) => {
-  const { corsOrigin } = getEnv(env);
-  return new Response(null, {
-    status: 204,
-    headers: jsonHeaders(corsOrigin)
-  });
-});
-router.get("/health", (request, env) => {
-  const { corsOrigin } = getEnv(env);
-  return new Response(JSON.stringify({ status: "ok", message: "Ma\xF5no API Online" }), {
-    headers: jsonHeaders(corsOrigin)
-  });
-});
+router.options("*", (request, env) => new Response(null, { status: 204, headers: jsonHeaders(getEnv(env).corsOrigin) }));
+router.get("/health", (request, env) => new Response(JSON.stringify({ status: "ok" }), { headers: jsonHeaders(getEnv(env).corsOrigin) }));
 router.get("/catalog", (request, env) => {
-  const { corsOrigin } = getEnv(env);
-  const catalogDatasets = [
-    {
-      id: "ds_tiles_teste",
-      name: "Tiles Teste (Cloudflare R2)",
-      type: "SERVERLESS MVT",
-      rows: "Transmiss\xE3o Cont\xEDnua",
-      description: "Prova de Conceito de Arquitetura Serverless. Fatias vetorizadas transmitidas diretamente para a GPU.",
-      columns: ["* Todas as propriedades encapsuladas no Protobuf"]
-    }
-  ];
-  return new Response(JSON.stringify({ datasets: catalogDatasets }), {
-    status: 200,
-    headers: jsonHeaders(corsOrigin)
-  });
-});
-router.post("/auth/signup", async (request, env) => {
-  const { corsOrigin } = getEnv(env);
-  const body = await readBody(request);
-  const { email, password } = body || {};
-  if (!email || !password) {
-    return new Response(
-      JSON.stringify({ error: "Email e senha s\xE3o obrigat\xF3rios." }),
-      { status: 400, headers: jsonHeaders(corsOrigin) }
-    );
-  }
-  const existing = await env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
-  if (existing) {
-    return new Response(JSON.stringify({ error: "Email j\xE1 cadastrado." }), {
-      status: 409,
-      headers: jsonHeaders(corsOrigin)
-    });
-  }
-  const passwordHash = await bcryptHash(password, 10);
-  const user = {
-    id: crypto.randomUUID(),
-    email,
-    password_hash: passwordHash,
-    created_at: now()
-  };
-  await env.DB.prepare(
-    "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)"
-  ).bind(user.id, user.email, user.password_hash, user.created_at).run();
-  const token = await createToken(env, user);
-  return new Response(JSON.stringify({ token, message: "Usu\xE1rio criado com sucesso!" }), {
-    status: 201,
-    headers: jsonHeaders(corsOrigin)
-  });
+  return new Response(JSON.stringify({ datasets: [{ id: "ds_tiles_teste", name: "Tiles Teste (Cloudflare R2)", type: "SERVERLESS MVT", rows: "Transmiss\xE3o Cont\xEDnua", description: "Prova de Conceito Serverless.", columns: ["*"] }] }), { headers: jsonHeaders(getEnv(env).corsOrigin) });
 });
 router.post("/auth/login", async (request, env) => {
   const { corsOrigin } = getEnv(env);
-  const body = await readBody(request);
-  const { email, password } = body || {};
-  if (!email || !password) {
-    return new Response(
-      JSON.stringify({ error: "Email e senha s\xE3o obrigat\xF3rios." }),
-      { status: 400, headers: jsonHeaders(corsOrigin) }
-    );
-  }
-  const user = await env.DB.prepare(
-    "SELECT id, email, password_hash FROM users WHERE email = ?"
-  ).bind(email).first();
-  const ok = user ? await bcryptCompare(password, user.password_hash) : false;
-  if (!user || !ok) {
-    return new Response(JSON.stringify({ error: "Credenciais inv\xE1lidas." }), {
-      status: 401,
-      headers: jsonHeaders(corsOrigin)
-    });
-  }
+  const { email, password } = await readBody(request) || {};
+  const user = await env.DB.prepare(`SELECT u.id, u.email, u.password_hash, u.role, u.organization_id, o.status as org_status FROM users u JOIN organizations o ON u.organization_id = o.id WHERE u.email = ?`).bind(email).first();
+  if (!user || !await bcryptCompare(password, user.password_hash)) return new Response(JSON.stringify({ error: "Credenciais inv\xE1lidas." }), { status: 401, headers: jsonHeaders(corsOrigin) });
+  if (user.org_status === "SUSPENDED" && user.role !== "SUPER_ADMIN") return new Response(JSON.stringify({ error: "Assinatura suspensa." }), { status: 403, headers: jsonHeaders(corsOrigin) });
   const token = await createToken(env, user);
-  return new Response(JSON.stringify({ token }), {
-    headers: jsonHeaders(corsOrigin)
-  });
+  return new Response(JSON.stringify({ token }), { headers: jsonHeaders(corsOrigin) });
 });
 router.get("/auth/me", async (request, env) => {
   const { corsOrigin } = getEnv(env);
   const auth = await authMiddleware(request, env);
-  if (auth.error) {
-    return new Response(JSON.stringify({ error: auth.error }), {
-      status: 401,
-      headers: jsonHeaders(corsOrigin)
-    });
+  if (auth.error) return new Response(JSON.stringify({ error: auth.error }), { status: 401, headers: jsonHeaders(corsOrigin) });
+  const user = await env.DB.prepare("SELECT id, email, role, organization_id FROM users WHERE id = ?").bind(auth.user.id).first();
+  return new Response(JSON.stringify({ user }), { headers: jsonHeaders(corsOrigin) });
+});
+router.get("/users", async (request, env) => {
+  const { corsOrigin } = getEnv(env);
+  const auth = await authMiddleware(request, env);
+  if (auth.error) return new Response(JSON.stringify({ error: auth.error }), { status: 401, headers: jsonHeaders(corsOrigin) });
+  if (auth.user.role === "VIEWER" || auth.user.role === "EDITOR") return new Response(JSON.stringify({ error: "Acesso negado." }), { status: 403, headers: jsonHeaders(corsOrigin) });
+  let result = auth.user.role === "SUPER_ADMIN" ? await env.DB.prepare("SELECT u.id, u.email, u.role, u.created_at, o.name as org_name FROM users u JOIN organizations o ON u.organization_id = o.id ORDER BY u.created_at DESC").all() : await env.DB.prepare("SELECT id, email, role, created_at FROM users WHERE organization_id = ? ORDER BY created_at DESC").bind(auth.user.org).all();
+  return new Response(JSON.stringify({ users: result.results || [] }), { headers: jsonHeaders(corsOrigin) });
+});
+router.post("/users", async (request, env) => {
+  const { corsOrigin } = getEnv(env);
+  const auth = await authMiddleware(request, env);
+  if (auth.error) return new Response(JSON.stringify({ error: auth.error }), { status: 401, headers: jsonHeaders(corsOrigin) });
+  if (auth.user.role === "VIEWER" || auth.user.role === "EDITOR") return new Response(JSON.stringify({ error: "Acesso negado." }), { status: 403, headers: jsonHeaders(corsOrigin) });
+  const { email, password, role = "VIEWER", target_org_id } = await readBody(request) || {};
+  const finalOrgId = auth.user.role === "SUPER_ADMIN" && target_org_id ? target_org_id : auth.user.org;
+  const org = await env.DB.prepare("SELECT max_users FROM organizations WHERE id = ?").bind(finalOrgId).first();
+  const currentUsers = await env.DB.prepare("SELECT count(id) as count FROM users WHERE organization_id = ?").bind(finalOrgId).first();
+  if (currentUsers.count >= org.max_users && auth.user.role !== "SUPER_ADMIN") return new Response(JSON.stringify({ error: "Limite atingido!" }), { status: 403, headers: jsonHeaders(corsOrigin) });
+  const passwordHash = await bcryptHash(password, 10);
+  const id = crypto.randomUUID();
+  await env.DB.prepare("INSERT INTO users (id, organization_id, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(id, finalOrgId, email, passwordHash, role, now()).run();
+  return new Response(JSON.stringify({ message: "Criado!", id }), { status: 201, headers: jsonHeaders(corsOrigin) });
+});
+router.delete("/users/:id", async (request, env) => {
+  const { corsOrigin } = getEnv(env);
+  const auth = await authMiddleware(request, env);
+  if (auth.error) return new Response(JSON.stringify({ error: auth.error }), { status: 401, headers: jsonHeaders(corsOrigin) });
+  if (auth.user.role === "VIEWER" || auth.user.role === "EDITOR") return new Response(JSON.stringify({ error: "Acesso negado." }), { status: 403, headers: jsonHeaders(corsOrigin) });
+  if (auth.user.role === "SUPER_ADMIN") {
+    await env.DB.prepare("DELETE FROM projects WHERE user_id = ?").bind(request.params.id).run();
+    await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(request.params.id).run();
+  } else {
+    await env.DB.prepare("DELETE FROM projects WHERE user_id = ? AND organization_id = ?").bind(request.params.id, auth.user.org).run();
+    await env.DB.prepare("DELETE FROM users WHERE id = ? AND organization_id = ?").bind(request.params.id, auth.user.org).run();
   }
-  const user = await env.DB.prepare(
-    "SELECT id, email, created_at FROM users WHERE id = ?"
-  ).bind(auth.user.id).first();
-  if (!user) {
-    return new Response(JSON.stringify({ error: "Usu\xE1rio n\xE3o encontrado." }), {
-      status: 404,
-      headers: jsonHeaders(corsOrigin)
-    });
-  }
-  return new Response(JSON.stringify({ user }), {
-    headers: jsonHeaders(corsOrigin)
-  });
+  return new Response(JSON.stringify({ status: "ok" }), { headers: jsonHeaders(corsOrigin) });
 });
 router.get("/projects", async (request, env) => {
   const { corsOrigin } = getEnv(env);
   const auth = await authMiddleware(request, env);
-  if (auth.error) {
-    return new Response(JSON.stringify({ error: auth.error }), {
-      status: 401,
-      headers: jsonHeaders(corsOrigin)
-    });
-  }
-  const result = await env.DB.prepare(
-    `SELECT id, name, created_at as createdAt, updated_at as updatedAt
-     FROM projects
-     WHERE user_id = ?
-     ORDER BY updated_at DESC`
-  ).bind(auth.user.id).all();
-  return new Response(JSON.stringify({ projects: result.results || [] }), {
-    headers: jsonHeaders(corsOrigin)
-  });
+  if (auth.error) return new Response(JSON.stringify({ error: auth.error }), { status: 401, headers: jsonHeaders(corsOrigin) });
+  let result = auth.user.role === "SUPER_ADMIN" ? await env.DB.prepare("SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM projects ORDER BY updated_at DESC").all() : await env.DB.prepare("SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM projects WHERE organization_id = ? ORDER BY updated_at DESC").bind(auth.user.org).all();
+  return new Response(JSON.stringify({ projects: result.results || [] }), { headers: jsonHeaders(corsOrigin) });
 });
-router.get("/projects/:id", async (request, env) => {
-  const { corsOrigin } = getEnv(env);
-  const auth = await authMiddleware(request, env);
-  if (auth.error) {
-    return new Response(JSON.stringify({ error: auth.error }), {
-      status: 401,
-      headers: jsonHeaders(corsOrigin)
-    });
-  }
-  const project = await env.DB.prepare(
-    `SELECT id, name, json_data as jsonData
-     FROM projects
-     WHERE id = ? AND user_id = ?`
-  ).bind(request.params.id, auth.user.id).first();
-  if (!project) {
-    return new Response(JSON.stringify({ error: "Projeto n\xE3o encontrado." }), {
-      status: 404,
-      headers: jsonHeaders(corsOrigin)
-    });
-  }
-  let keplerJson;
-  try {
-    keplerJson = JSON.parse(project.jsonData);
-  } catch {
-    return new Response(JSON.stringify({ error: "JSON do projeto inv\xE1lido." }), {
-      status: 500,
-      headers: jsonHeaders(corsOrigin)
-    });
-  }
-  const url = new URL(request.url);
-  const city = url.searchParams.get("city");
-  const field = url.searchParams.get("field") || "cidade";
-  if (city) {
-    try {
-      keplerJson = filterKeplerJsonByCity(keplerJson, city, field);
-    } catch {
-      return new Response(
-        JSON.stringify({ error: "N\xE3o foi poss\xEDvel aplicar o filtro." }),
-        { status: 400, headers: jsonHeaders(corsOrigin) }
-      );
-    }
-  }
-  return new Response(
-    JSON.stringify({ id: project.id, name: project.name, keplerJson }),
-    { headers: jsonHeaders(corsOrigin) }
-  );
-});
-router.post("/projects", async (request, env) => {
-  const { corsOrigin } = getEnv(env);
-  const auth = await authMiddleware(request, env);
-  if (auth.error) {
-    return new Response(JSON.stringify({ error: auth.error }), {
-      status: 401,
-      headers: jsonHeaders(corsOrigin)
-    });
-  }
-  const body = await readBody(request);
-  const { name, keplerJson } = body || {};
-  if (!name || !keplerJson) {
-    return new Response(
-      JSON.stringify({ error: "Nome e JSON do projeto s\xE3o obrigat\xF3rios." }),
-      { status: 400, headers: jsonHeaders(corsOrigin) }
-    );
-  }
-  const project = {
-    id: crypto.randomUUID(),
-    user_id: auth.user.id,
-    name,
-    json_data: JSON.stringify(keplerJson),
-    created_at: now(),
-    updated_at: now()
-  };
-  await env.DB.prepare(
-    `INSERT INTO projects (id, user_id, name, json_data, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).bind(
-    project.id,
-    project.user_id,
-    project.name,
-    project.json_data,
-    project.created_at,
-    project.updated_at
-  ).run();
-  return new Response(JSON.stringify({ id: project.id }), {
-    status: 201,
-    headers: jsonHeaders(corsOrigin)
-  });
-});
-router.put("/projects/:id", async (request, env) => {
-  const { corsOrigin } = getEnv(env);
-  const auth = await authMiddleware(request, env);
-  if (auth.error) {
-    return new Response(JSON.stringify({ error: auth.error }), {
-      status: 401,
-      headers: jsonHeaders(corsOrigin)
-    });
-  }
-  const body = await readBody(request);
-  const { name, keplerJson } = body || {};
-  if (!name || !keplerJson) {
-    return new Response(
-      JSON.stringify({ error: "Nome e JSON do projeto s\xE3o obrigat\xF3rios." }),
-      { status: 400, headers: jsonHeaders(corsOrigin) }
-    );
-  }
-  const result = await env.DB.prepare(
-    `UPDATE projects
-     SET name = ?, json_data = ?, updated_at = ?
-     WHERE id = ? AND user_id = ?`
-  ).bind(name, JSON.stringify(keplerJson), now(), request.params.id, auth.user.id).run();
-  if (result.changes === 0) {
-    return new Response(JSON.stringify({ error: "Projeto n\xE3o encontrado." }), {
-      status: 404,
-      headers: jsonHeaders(corsOrigin)
-    });
-  }
-  return new Response(JSON.stringify({ status: "ok" }), {
-    headers: jsonHeaders(corsOrigin)
-  });
-});
-router.delete("/projects/:id", async (request, env) => {
-  const { corsOrigin } = getEnv(env);
-  const auth = await authMiddleware(request, env);
-  if (auth.error) {
-    return new Response(JSON.stringify({ error: auth.error }), {
-      status: 401,
-      headers: jsonHeaders(corsOrigin)
-    });
-  }
-  const result = await env.DB.prepare("DELETE FROM projects WHERE id = ? AND user_id = ?").bind(request.params.id, auth.user.id).run();
-  if (result.changes === 0) {
-    return new Response(JSON.stringify({ error: "Projeto n\xE3o encontrado." }), {
-      status: 404,
-      headers: jsonHeaders(corsOrigin)
-    });
-  }
-  return new Response(JSON.stringify({ status: "ok" }), {
-    headers: jsonHeaders(corsOrigin)
-  });
-});
-router.all("*", (request, env) => {
-  const { corsOrigin } = getEnv(env);
-  return new Response(JSON.stringify({ error: "Rota n\xE3o encontrada." }), {
-    status: 404,
-    headers: jsonHeaders(corsOrigin)
-  });
-});
+router.all("*", (request, env) => new Response(JSON.stringify({ error: "Rota n\xE3o encontrada." }), { status: 404, headers: jsonHeaders(getEnv(env).corsOrigin) }));
 var src_default = {
   async fetch(request, env, ctx) {
-    const { jwtSecret, corsOrigin } = getEnv(env);
-    if (env?.NODE_ENV === "production" && jwtSecret === "maono_dev_secret") {
-      return new Response(
-        JSON.stringify({ error: "Defina JWT_SECRET antes de iniciar." }),
-        { status: 500, headers: jsonHeaders(corsOrigin) }
-      );
-    }
+    const { corsOrigin } = getEnv(env);
     try {
       const res = await router.fetch(request, env, ctx);
-      if (res instanceof Response) return res;
-      return new Response(JSON.stringify(res ?? {}), {
-        status: 200,
-        headers: jsonHeaders(corsOrigin)
-      });
+      return res instanceof Response ? res : new Response(JSON.stringify(res ?? {}), { status: 200, headers: jsonHeaders(corsOrigin) });
     } catch (err) {
-      console.error(err);
-      const message2 = env?.NODE_ENV === "production" ? "Erro interno." : err && err.message || String(err);
-      return new Response(JSON.stringify({ error: message2 }), {
-        status: 500,
-        headers: jsonHeaders(corsOrigin)
-      });
+      return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: jsonHeaders(corsOrigin) });
     }
   }
 };
@@ -3806,7 +3532,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx)
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-hbPyoB/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-FdlSlk/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -3839,7 +3565,7 @@ function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-hbPyoB/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-FdlSlk/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
