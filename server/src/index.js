@@ -83,7 +83,55 @@ router.get("/auth/me", async (request, env) => {
 });
 
 // ==========================================
-// 🏢 GESTÃO DE USUÁRIOS
+// 🏢 GESTÃO DE ORGANIZAÇÕES (NOVO: VISÃO DO CEO)
+// ==========================================
+router.get("/organizations", async (request, env) => {
+  const { corsOrigin } = getEnv(env);
+  const auth = await authMiddleware(request, env);
+  if (auth.error) return new Response(JSON.stringify({ error: auth.error }), { status: 401, headers: jsonHeaders(corsOrigin) });
+  
+  // APENAS SUPER_ADMIN ACESSA
+  if (auth.user.role !== 'SUPER_ADMIN') return new Response(JSON.stringify({ error: "Acesso restrito ao CEO." }), { status: 403, headers: jsonHeaders(corsOrigin) });
+
+  // Busca todas as empresas e conta quantos usuários cada uma tem usando subquery
+  const result = await env.DB.prepare(`
+    SELECT o.id, o.name, o.max_users, o.status, o.created_at,
+    (SELECT COUNT(id) FROM users WHERE organization_id = o.id) as current_users
+    FROM organizations o
+    ORDER BY o.created_at DESC
+  `).all();
+
+  return new Response(JSON.stringify({ organizations: result.results || [] }), { headers: jsonHeaders(corsOrigin) });
+});
+
+router.post("/organizations", async (request, env) => {
+  const { corsOrigin } = getEnv(env);
+  const auth = await authMiddleware(request, env);
+  if (auth.error) return new Response(JSON.stringify({ error: auth.error }), { status: 401, headers: jsonHeaders(corsOrigin) });
+  if (auth.user.role !== 'SUPER_ADMIN') return new Response(JSON.stringify({ error: "Acesso restrito ao CEO." }), { status: 403, headers: jsonHeaders(corsOrigin) });
+
+  const { name, max_users = 5, status = 'ACTIVE' } = await readBody(request) || {};
+  const id = 'org-' + crypto.randomUUID(); // Cria um ID único para a nova empresa
+  
+  await env.DB.prepare("INSERT INTO organizations (id, name, max_users, status, created_at) VALUES (?, ?, ?, ?, ?)").bind(id, name, max_users, status, now()).run();
+  
+  return new Response(JSON.stringify({ message: "Empresa criada com sucesso!", id }), { status: 201, headers: jsonHeaders(corsOrigin) });
+});
+
+router.put("/organizations/:id/status", async (request, env) => {
+  const { corsOrigin } = getEnv(env);
+  const auth = await authMiddleware(request, env);
+  if (auth.error) return new Response(JSON.stringify({ error: auth.error }), { status: 401, headers: jsonHeaders(corsOrigin) });
+  if (auth.user.role !== 'SUPER_ADMIN') return new Response(JSON.stringify({ error: "Acesso restrito ao CEO." }), { status: 403, headers: jsonHeaders(corsOrigin) });
+
+  const { status } = await readBody(request) || {};
+  await env.DB.prepare("UPDATE organizations SET status = ? WHERE id = ?").bind(status, request.params.id).run();
+  
+  return new Response(JSON.stringify({ message: "Status do contrato atualizado!" }), { headers: jsonHeaders(corsOrigin) });
+});
+
+// ==========================================
+// 👥 GESTÃO DE USUÁRIOS (ATUALIZADO COM TRAVAS)
 // ==========================================
 router.get("/users", async (request, env) => {
   const { corsOrigin } = getEnv(env);
@@ -104,16 +152,23 @@ router.post("/users", async (request, env) => {
   if (auth.user.role === 'VIEWER' || auth.user.role === 'EDITOR') return new Response(JSON.stringify({ error: "Acesso negado." }), { status: 403, headers: jsonHeaders(corsOrigin) });
 
   const { email, password, role = 'VIEWER', target_org_id } = await readBody(request) || {};
+  
+  // 🚀 REGRA 1: SE FOR MASTER, SÓ PODE CRIAR NA PRÓPRIA EMPRESA. SE FOR CEO, PODE ESCOLHER O CLIENTE.
   const finalOrgId = auth.user.role === 'SUPER_ADMIN' && target_org_id ? target_org_id : auth.user.org;
 
+  // 🚀 REGRA 2: A MATEMÁTICA DO CONTRATO
   const org = await env.DB.prepare("SELECT max_users FROM organizations WHERE id = ?").bind(finalOrgId).first();
   const currentUsers = await env.DB.prepare("SELECT count(id) as count FROM users WHERE organization_id = ?").bind(finalOrgId).first();
-  if (currentUsers.count >= org.max_users && auth.user.role !== 'SUPER_ADMIN') return new Response(JSON.stringify({ error: "Limite atingido!" }), { status: 403, headers: jsonHeaders(corsOrigin) });
+  
+  // Bloqueia se atingiu o limite (SUPER_ADMIN ignora o limite e pode criar quantos quiser)
+  if (currentUsers.count >= org.max_users && auth.user.role !== 'SUPER_ADMIN') {
+    return new Response(JSON.stringify({ error: "Limite de usuários do contrato atingido!" }), { status: 403, headers: jsonHeaders(corsOrigin) });
+  }
 
   const passwordHash = await bcryptHash(password, 10);
   const id = crypto.randomUUID();
   await env.DB.prepare("INSERT INTO users (id, organization_id, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(id, finalOrgId, email, passwordHash, role, now()).run();
-  return new Response(JSON.stringify({ message: "Criado!", id }), { status: 201, headers: jsonHeaders(corsOrigin) });
+  return new Response(JSON.stringify({ message: "Usuário Criado!", id }), { status: 201, headers: jsonHeaders(corsOrigin) });
 });
 
 router.delete("/users/:id", async (request, env) => {

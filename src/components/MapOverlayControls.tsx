@@ -34,7 +34,6 @@ const ChevronRightIcon = () => (<svg width="18" height="18" viewBox="0 0 24 24" 
 const ChevronLeftIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>);
 const CenterMapIcon = () => (<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v4M12 18v4M4 12H2M22 12h-4"></path></svg>);
 
-// --- Utils ---
 const getPlainFields = (rawFields: any) => {
   if (!rawFields) return [];
   const arr = typeof rawFields.toArray === 'function' ? rawFields.toArray() : Array.isArray(rawFields) ? rawFields : [];
@@ -47,7 +46,8 @@ const getPlainFields = (rawFields: any) => {
 
 const DATASET_ACCENT_COLORS = ['#C5A059', '#E2D7C1', '#9CA3AF', '#CD9575', '#64748B'];
 
-export function MapOverlayControls() {
+// 🚀 MÁGICA 1: Adicionado o prop isHidden
+export function MapOverlayControls({ isHidden = false }: { isHidden?: boolean }) {
   const dispatch = useDispatch();
 
   const datasetsRaw = useSelector((state: any) => selectDatasets(state, KEPLER_ID));
@@ -60,14 +60,11 @@ export function MapOverlayControls() {
   const interactionConfig = visState.interactionConfig || {};
   const isMapLegendActive = uiState.mapControls?.mapLegend?.active || false;
 
-  // --- Local States: Tooltips ---
   const [showTooltipsPanel, setShowTooltipsPanel] = useState(false);
   const [activeTooltipDatasetId, setActiveTooltipDatasetId] = useState<string | null>(null);
   const [tooltipDraftFields, setTooltipDraftFields] = useState<any[]>([]);
-  // 🚀 NOVO: Guarda o backup do estado inicial para fazer o Rollback (Descartar)
   const originalFieldsBackup = useRef<any[]>([]);
 
-  // --- Local States: Marcador & Isócronas ---
   const [markerState, setMarkerState] = useState<'idle' | 'placing' | 'placed'>('idle');
   const [markerOrigin, setMarkerOrigin] = useState<{lat: number, lng: number} | null>(null);
   const [showMarkerMenu, setShowMarkerMenu] = useState(false);
@@ -82,7 +79,6 @@ export function MapOverlayControls() {
   const [isLoadingIsochrone, setIsLoadingIsochrone] = useState(false);
   const [previewDataId, setPreviewDataId] = useState<string | null>(null);
 
-  // 🚀 NÚCLEO MATEMÁTICO: Projeção Sub-pixel de Câmera
   const getMapRect = useCallback(() => {
     const mapEl = document.querySelector('.mapboxgl-canvas');
     if (mapEl) return mapEl.getBoundingClientRect();
@@ -153,9 +149,6 @@ export function MapOverlayControls() {
     return DATASET_ACCENT_COLORS[safeIndex % DATASET_ACCENT_COLORS.length];
   };
 
-  // =========================================================================
-  // 🚀 LÓGICA DO SENSOR DE CÂMERA GLOBAL
-  // =========================================================================
   const [globalTargetBounds, setGlobalTargetBounds] = useState<number[] | null>(null);
   const [globalCentroid, setGlobalCentroid] = useState<{lat: number, lng: number} | null>(null);
   const [isGlowActive, setIsGlowActive] = useState(false);
@@ -299,9 +292,6 @@ export function MapOverlayControls() {
     requestAnimationFrame(animateCamera);
   };
 
-  // =========================================================================
-  // 🚀 LÓGICA DE NAVEGAÇÃO DE TOOLTIPS (LIVE PREVIEW COM ROLLBACK)
-  // =========================================================================
   const tooltipConf = interactionConfig?.tooltip?.config || (interactionConfig?.tooltip?.get && interactionConfig.tooltip.get('config'));
   const fieldsToShow = tooltipConf?.fieldsToShow || (tooltipConf?.get && tooltipConf.get('fieldsToShow')) || {};
 
@@ -309,7 +299,6 @@ export function MapOverlayControls() {
     const datasetFields = fieldsToShow[datasetId] || (fieldsToShow.get && fieldsToShow.get(datasetId));
     const activeFields = getPlainFields(datasetFields);
     
-    // 📸 SALVA O BACKUP PARA O ROLLBACK!
     originalFieldsBackup.current = [...activeFields]; 
     
     setTooltipDraftFields(activeFields);
@@ -328,9 +317,8 @@ export function MapOverlayControls() {
       newFields = [...tooltipDraftFields, { name: fieldName, format: null }];
     }
     
-    setTooltipDraftFields(newFields); // Atualiza o estado da UI
+    setTooltipDraftFields(newFields); 
 
-    // 🚀 LIVE PREVIEW: Injeta direto no Kepler para ver instantaneamente!
     dispatch(wrapTo(KEPLER_ID, interactionConfigChange({ 
       id: 'tooltip', 
       enabled: true, 
@@ -345,14 +333,12 @@ export function MapOverlayControls() {
   };
 
   const handleSaveTooltips = () => {
-    // 🎉 O mapa já está atualizado pelo Live Preview! Só precisamos fechar o painel.
     setActiveTooltipDatasetId(null);
     setTooltipDraftFields([]);
   };
 
   const handleDiscardTooltips = () => {
     if (activeTooltipDatasetId) {
-      // ⏪ ROLLBACK: Injeta o backup de volta no Kepler para desfazer o Preview
       dispatch(wrapTo(KEPLER_ID, interactionConfigChange({ 
         id: 'tooltip', 
         enabled: true, 
@@ -369,9 +355,6 @@ export function MapOverlayControls() {
     setTooltipDraftFields([]);
   };
 
-  // =========================================================================
-  // 🚀 LÓGICA DE CÁLCULO DE ISÓCRONAS
-  // =========================================================================
   useEffect(() => {
     if (isoType === 'time') setIsoRanges(['10', '20', '30']);
     else setIsoRanges(['1', '2', '3']);
@@ -426,6 +409,9 @@ export function MapOverlayControls() {
     } catch (error) {} finally { setIsLoadingIsochrone(false); }
   };
 
+  // 🚀 MÁGICA 2: Se isHidden for true (Painel CEO aberto), interrompemos o render do Portal!
+  if (isHidden) return null;
+
   return createPortal(
     <>
       <div 
@@ -437,7 +423,6 @@ export function MapOverlayControls() {
         <span>Basemap by: XXX</span>
       </div>
 
-      {/* 🚀 O ESCUDO DE VIDRO (GLASS PANE) - BLINDADO COM PRECISÃO MATEMÁTICA */}
       {markerState === 'placing' && (
         <div 
           className="fixed inset-0 z-[999997]"
@@ -525,7 +510,6 @@ export function MapOverlayControls() {
           </div>
         )}
 
-        {/* Botões Laterais */}
         <div className="flex flex-col items-end gap-3 pointer-events-auto relative">
           
           <button 
@@ -581,7 +565,6 @@ export function MapOverlayControls() {
         </div>
       </div>
 
-      {/* 🚀 O ALFINETE RENDERIZADO NO MAPA (Usa Tradutor Sub-Pixel Inverso) */}
       {(() => {
         let pinX = -9999, pinY = -9999, shouldShowPin = false;
         if (markerState === 'placed' && markerOrigin && !previewDataId && mapState?.width > 0 && mapState?.height > 0) {
@@ -631,7 +614,6 @@ export function MapOverlayControls() {
         ) : null;
       })()}
 
-      {/* Modal Isócronas */}
       {showIsoModal && (
          <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-[#030508]/80 backdrop-blur-sm p-4">
             <div className="bg-[#0a0f18] border border-[#1f2b3e] rounded-2xl w-[400px] shadow-[0_30px_60px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col">

@@ -6,7 +6,8 @@ import { Topbar } from "../components/Topbar";
 import { FilterPanel } from "../components/FilterPanel";
 import { DataPanel } from "../components/DataPanel";
 import { AnalyticsPanel } from "../components/AnalyticsPanel"; 
-import { UserManagementPanel } from "../components/UserManagementPanel"; // 🚀 1. IMPORTAÇÃO DO PAINEL
+import { UserManagementPanel } from "../components/UserManagementPanel"; 
+import OrganizationManagementPanel from "../components/OrganizationManagementPanel"; 
 import { KeplerPanelErrorBoundary } from "../components/KeplerPanelErrorBoundary";
 import { MaonoDataImporter } from "../components/MaonoDataImporter";
 import { MapOverlayControls } from "../components/MapOverlayControls"; 
@@ -18,7 +19,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [isPanelOpen, setIsPanelOpen] = useState(true);
   const [isImporterOpen, setIsImporterOpen] = useState(false);
   
-  // ESTADOS ELEVADOS: O layout agora controla as DUAS gavetas externas
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
   const [isColumnsOpen, setIsColumnsOpen] = useState(false); 
 
@@ -31,11 +31,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const handlePanelSelect = (panel: string) => {
     dispatch(wrapTo(KEPLER_ID, toggleModal(null)));
     
-    // Fecha as gavetas ao trocar de aba
     setIsAIPanelOpen(false); 
     setIsColumnsOpen(false);
     
-    // 🚀 2. REMOVIDO o "users" daqui. Se ficasse aqui, o painel nunca abriria!
     if (panel === "home") {
       setActivePanel(panel);
       setIsPanelOpen(false);
@@ -50,32 +48,46 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 🚀 3. ADICIONADO "users" no array que permite o painel ser renderizado
   const isPanelActive = ["layers", "dados", "charts", "users"].includes(activePanel);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#020305]">
+      
+      {/* 🚀 O ARSENAL DE FORÇA BRUTA: Desliga os controles teimosos do Kepler e do Mapbox na marra via CSS */}
+      {activePanel === 'organizations' && (
+        <style>{`
+          .map-control,
+          .mapboxgl-control-container,
+          .maono-controls,
+          #kepler-gl__map .map-control-panel {
+             opacity: 0 !important;
+             pointer-events: none !important;
+             visibility: hidden !important;
+             z-index: -1 !important;
+             display: none !important;
+          }
+        `}</style>
+      )}
+
       <Sidebar activePanel={activePanel} onPanelSelect={handlePanelSelect} onOpenDataModal={handleOpenData} />
 
-      <div className="flex flex-col flex-1 h-full min-w-0">
+      <div className="flex flex-col flex-1 h-full min-w-0 relative">
         <Topbar />
 
         <main className="flex flex-1 relative overflow-hidden bg-[#020305]">
           
+          {/* PAINÉIS DESLIZANTES NORMAIS (Camadas, Filtros, Utilizadores...) */}
           <div 
-            className="absolute top-0 left-0 h-full z-50 transition-all duration-500 ease-out flex"
+            className="absolute top-0 left-0 h-full z-[9999] transition-all duration-500 ease-out flex"
             style={{ 
               transform: isPanelOpen && isPanelActive ? 'translateX(0)' : 'translateX(-100%)', 
-              // 🚀 4. LARGURA: Se for "charts" ou "users", ocupa 50% da tela para a tabela respirar
               width: ['charts', 'users'].includes(activePanel) ? '50%' : '380px' 
             }}
           >
-            <div className="w-full h-full bg-[#04060a]/95 backdrop-blur-xl shadow-[20px_0_40px_rgba(0,0,0,0.8)] border-r border-[#161f30]">
+            <div className="w-full h-full bg-[#04060a]/95 backdrop-blur-xl shadow-[20px_0_40px_rgba(0,0,0,0.8)] border-r border-[#161f30] overflow-hidden">
               <KeplerPanelErrorBoundary>
                 {activePanel === "layers" && <FilterPanel />}
                 {activePanel === "dados" && <DataPanel onOpenImporter={() => setIsImporterOpen(true)} />}
-                
-                {/* 🚀 5. INSERÇÃO DO COMPONENTE NA ÁRVORE DE RENDERIZAÇÃO */}
                 {activePanel === "users" && <UserManagementPanel />}
                 
                 {activePanel === "charts" && (
@@ -89,6 +101,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </KeplerPanelErrorBoundary>
             </div>
 
+            {/* Setinha de fechar (Apenas para os painéis normais) */}
             {isPanelActive && (
               <button 
                 type="button"
@@ -127,7 +140,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             )}
           </div>
 
-          <div className="flex-1 h-full w-full relative z-0">
+          {/* 🚀 PAINEL DO CEO ABSOLUTO EM TELA CHEIA (Fixed para quebrar a prisão do React e sobrepor tudo) */}
+          {activePanel === 'organizations' && (
+            <div className="fixed top-0 left-20 right-0 bottom-0 z-[999999999] bg-[#020305] overflow-y-auto shadow-2xl">
+              <OrganizationManagementPanel />
+            </div>
+          )}
+
+          {/* CAPA DE INVISIBILIDADE DO MAPA */}
+          <div 
+            className={`flex-1 h-full w-full relative z-0 transition-opacity duration-300 ${
+              activePanel === 'organizations' ? 'opacity-0 pointer-events-none invisible' : 'opacity-100 visible'
+            }`}
+          >
             {children}
             <MapOverlayControls />
           </div>

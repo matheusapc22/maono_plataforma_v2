@@ -45,7 +45,50 @@ export const maonoApi = {
   },
 
   // ==========================================
-  // 👥 GESTÃO DE USUÁRIOS (SÓ PARA MASTER)
+  // 🏢 GESTÃO DE ORGANIZAÇÕES / CLIENTES (SÓ PARA CEO)
+  // ==========================================
+  getOrganizations: async (token: string) => {
+    const response = await fetch(`${API_URL}/organizations`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error("Erro ao carregar organizações");
+    return response.json();
+  },
+
+  createOrganization: async (token: string, data: { name: string; max_users: number }) => {
+    const response = await fetch(`${API_URL}/organizations`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json", 
+        "Authorization": `Bearer ${token}` 
+      },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || "Erro ao criar empresa");
+    }
+    return response.json();
+  },
+
+  updateOrganizationStatus: async (token: string, orgId: string, status: string) => {
+    const response = await fetch(`${API_URL}/organizations/${orgId}/status`, {
+      method: "PUT",
+      headers: { 
+        "Content-Type": "application/json", 
+        "Authorization": `Bearer ${token}` 
+      },
+      body: JSON.stringify({ status }),
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || "Erro ao atualizar status da empresa");
+    }
+    return response.json();
+  },
+
+  // ==========================================
+  // 👥 GESTÃO DE USUÁRIOS (MASTER E CEO)
   // ==========================================
   getUsers: async (token: string) => {
     const response = await fetch(`${API_URL}/users`, {

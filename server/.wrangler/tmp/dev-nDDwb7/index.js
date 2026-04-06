@@ -1876,10 +1876,10 @@ var require_bcrypt = __commonJS({
   }
 });
 
-// .wrangler/tmp/bundle-FdlSlk/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-6jE65O/middleware-loader.entry.ts
 init_modules_watch_stub();
 
-// .wrangler/tmp/bundle-FdlSlk/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-6jE65O/middleware-insertion-facade.js
 init_modules_watch_stub();
 
 // src/index.js
@@ -3432,6 +3432,38 @@ router.get("/auth/me", async (request, env) => {
   const user = await env.DB.prepare("SELECT id, email, role, organization_id FROM users WHERE id = ?").bind(auth.user.id).first();
   return new Response(JSON.stringify({ user }), { headers: jsonHeaders(corsOrigin) });
 });
+router.get("/organizations", async (request, env) => {
+  const { corsOrigin } = getEnv(env);
+  const auth = await authMiddleware(request, env);
+  if (auth.error) return new Response(JSON.stringify({ error: auth.error }), { status: 401, headers: jsonHeaders(corsOrigin) });
+  if (auth.user.role !== "SUPER_ADMIN") return new Response(JSON.stringify({ error: "Acesso restrito ao CEO." }), { status: 403, headers: jsonHeaders(corsOrigin) });
+  const result = await env.DB.prepare(`
+    SELECT o.id, o.name, o.max_users, o.status, o.created_at,
+    (SELECT COUNT(id) FROM users WHERE organization_id = o.id) as current_users
+    FROM organizations o
+    ORDER BY o.created_at DESC
+  `).all();
+  return new Response(JSON.stringify({ organizations: result.results || [] }), { headers: jsonHeaders(corsOrigin) });
+});
+router.post("/organizations", async (request, env) => {
+  const { corsOrigin } = getEnv(env);
+  const auth = await authMiddleware(request, env);
+  if (auth.error) return new Response(JSON.stringify({ error: auth.error }), { status: 401, headers: jsonHeaders(corsOrigin) });
+  if (auth.user.role !== "SUPER_ADMIN") return new Response(JSON.stringify({ error: "Acesso restrito ao CEO." }), { status: 403, headers: jsonHeaders(corsOrigin) });
+  const { name, max_users = 5, status = "ACTIVE" } = await readBody(request) || {};
+  const id = "org-" + crypto.randomUUID();
+  await env.DB.prepare("INSERT INTO organizations (id, name, max_users, status, created_at) VALUES (?, ?, ?, ?, ?)").bind(id, name, max_users, status, now()).run();
+  return new Response(JSON.stringify({ message: "Empresa criada com sucesso!", id }), { status: 201, headers: jsonHeaders(corsOrigin) });
+});
+router.put("/organizations/:id/status", async (request, env) => {
+  const { corsOrigin } = getEnv(env);
+  const auth = await authMiddleware(request, env);
+  if (auth.error) return new Response(JSON.stringify({ error: auth.error }), { status: 401, headers: jsonHeaders(corsOrigin) });
+  if (auth.user.role !== "SUPER_ADMIN") return new Response(JSON.stringify({ error: "Acesso restrito ao CEO." }), { status: 403, headers: jsonHeaders(corsOrigin) });
+  const { status } = await readBody(request) || {};
+  await env.DB.prepare("UPDATE organizations SET status = ? WHERE id = ?").bind(status, request.params.id).run();
+  return new Response(JSON.stringify({ message: "Status do contrato atualizado!" }), { headers: jsonHeaders(corsOrigin) });
+});
 router.get("/users", async (request, env) => {
   const { corsOrigin } = getEnv(env);
   const auth = await authMiddleware(request, env);
@@ -3449,11 +3481,13 @@ router.post("/users", async (request, env) => {
   const finalOrgId = auth.user.role === "SUPER_ADMIN" && target_org_id ? target_org_id : auth.user.org;
   const org = await env.DB.prepare("SELECT max_users FROM organizations WHERE id = ?").bind(finalOrgId).first();
   const currentUsers = await env.DB.prepare("SELECT count(id) as count FROM users WHERE organization_id = ?").bind(finalOrgId).first();
-  if (currentUsers.count >= org.max_users && auth.user.role !== "SUPER_ADMIN") return new Response(JSON.stringify({ error: "Limite atingido!" }), { status: 403, headers: jsonHeaders(corsOrigin) });
+  if (currentUsers.count >= org.max_users && auth.user.role !== "SUPER_ADMIN") {
+    return new Response(JSON.stringify({ error: "Limite de usu\xE1rios do contrato atingido!" }), { status: 403, headers: jsonHeaders(corsOrigin) });
+  }
   const passwordHash = await bcryptHash(password, 10);
   const id = crypto.randomUUID();
   await env.DB.prepare("INSERT INTO users (id, organization_id, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(id, finalOrgId, email, passwordHash, role, now()).run();
-  return new Response(JSON.stringify({ message: "Criado!", id }), { status: 201, headers: jsonHeaders(corsOrigin) });
+  return new Response(JSON.stringify({ message: "Usu\xE1rio Criado!", id }), { status: 201, headers: jsonHeaders(corsOrigin) });
 });
 router.delete("/users/:id", async (request, env) => {
   const { corsOrigin } = getEnv(env);
@@ -3532,7 +3566,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx)
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-FdlSlk/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-6jE65O/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -3565,7 +3599,7 @@ function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-FdlSlk/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-6jE65O/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
